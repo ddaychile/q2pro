@@ -1098,7 +1098,7 @@ static void GL_Register(void)
     gl_glowmap_intensity = Cvar_Get("gl_glowmap_intensity", "0.75", 0);
     gl_flarespeed = Cvar_Get("gl_flarespeed", "8", 0);
     gl_fontshadow = Cvar_Get("gl_fontshadow", "0", 0);
-    gl_shaders = Cvar_Get("gl_shaders", "1", CVAR_FILES);
+    gl_shaders = Cvar_Get("gl_shaders", "1", CVAR_CHEAT);
 #if USE_MD5
     gl_md5_load = Cvar_Get("gl_md5_load", "1", CVAR_FILES);
     gl_md5_use = Cvar_Get("gl_md5_use", "1", 0);
@@ -1273,10 +1273,11 @@ static void GL_PostInit(void)
 {
     r_registration_sequence = 1;
 
-    if (gl_shaders->modified) {
-        GL_ShutdownState();
-        GL_InitState();
-    }
+    // kernel: this deactivates change of rendering backend
+    //if (gl_shaders->modified) {
+    //    GL_ShutdownState();
+    //    GL_InitState();
+    //}
     GL_ClearState();
     GL_InitImages();
     GL_InitQueries();
