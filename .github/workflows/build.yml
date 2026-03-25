@@ -152,3 +152,8 @@ jobs:
             sdl2 curl png jpeg-turbo libx11 libdecor evdev-proto wayland-protocols
             meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_FREEBSD }} builddir
             meson compile -C builddir
+      - name: Guardar ejecutable
+        uses: actions/upload-artifact@v4
+        with:
+          name: ejecutable-windows-${{ matrix.arch }}
+          path: builddir/*.exe
