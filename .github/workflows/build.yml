@@ -52,7 +52,6 @@ jobs:
         arch: ["i686", "x86_64"]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/cache@v4
         with:
           path: subprojects/packagecache
@@ -69,6 +68,12 @@ jobs:
           ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
           meson compile -C builddir
 
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-mingw-${{ matrix.arch }}
+          path: builddir/*.exe
+
   msvc:
     runs-on: windows-latest
     strategy:
@@ -76,7 +81,6 @@ jobs:
         arch: ["x86", "x64"]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/cache@v4
         with:
           path: subprojects/packagecache
@@ -85,7 +89,6 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.arch }}
-
       - uses: ilammy/setup-nasm@v1
 
       - name: Install dependencies
@@ -96,6 +99,12 @@ jobs:
           meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
           meson compile -C builddir
 
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-msvc-${{ matrix.arch }}
+          path: builddir/*.exe
+
   linux:
     runs-on: ubuntu-latest
     strategy:
@@ -103,7 +112,6 @@ jobs:
         cc: [gcc, clang]
     steps:
       - uses: actions/checkout@v4
-
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -119,11 +127,19 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
 
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-linux-${{ matrix.cc }}
+          path: |
+            builddir/*
+            !builddir/**/*.a
+            !builddir/**/*.o
+
   macos:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Install dependencies
         run: |
           brew update
@@ -134,12 +150,17 @@ jobs:
           meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_MACOS }} builddir
           meson compile -C builddir
 
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos
+          path: builddir/
+
   freebsd:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
       - name: Build
         uses: cross-platform-actions/action@v0.27.0
         with:
@@ -152,8 +173,9 @@ jobs:
             sdl2 curl png jpeg-turbo libx11 libdecor evdev-proto wayland-protocols
             meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_FREEBSD }} builddir
             meson compile -C builddir
-      - name: Guardar ejecutable
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ejecutable-windows-${{ matrix.arch }}
-          path: builddir/*.exe
+          name: build-freebsd
+          path: builddir/
