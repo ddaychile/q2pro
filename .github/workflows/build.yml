@@ -103,13 +103,16 @@ jobs:
           meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
           meson compile -C builddir
 
+      - name: Package Windows Binary
+        shell: pwsh
+        run: |
+          Compress-Archive -Path builddir/*.exe, builddir/*.dll -DestinationPath q2pro-windows-${{ matrix.arch }}.zip
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-msvc-${{ matrix.arch }}
-          path: |
-            builddir/*.exe
-            builddir/*.dll
+          name: windows-${{ matrix.arch }}
+          path: q2pro-windows-${{ matrix.arch }}.zip
 
   linux:
     runs-on: ubuntu-latest
@@ -133,14 +136,17 @@ jobs:
         env:
           CC: ${{ matrix.cc }}
 
+      - name: Package Linux Binary
+        run: |
+          cd builddir
+          zip ../q2pro-linux-${{ matrix.cc }}.zip q2pro q2proded game*.so
+          cd ..
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-linux-${{ matrix.cc }}
-          path: |
-            builddir/q2pro
-            builddir/q2proded
-            builddir/game*.so
+          name: linux-${{ matrix.cc }}
+          path: q2pro-linux-${{ matrix.cc }}.zip
 
   macos:
     runs-on: macos-latest
@@ -156,14 +162,17 @@ jobs:
           meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_MACOS }} builddir
           meson compile -C builddir
 
+      - name: Package macOS Binary
+        run: |
+          cd builddir
+          zip ../q2pro-macos.zip q2pro q2proded game*.dylib
+          cd ..
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-macos
-          path: |
-            builddir/q2pro
-            builddir/q2proded
-            builddir/game*.dylib
+          name: macos
+          path: q2pro-macos.zip
             
   # Descargar y subir los achivos al release.
   release:
