@@ -166,7 +166,7 @@ jobs:
   # Descargar y subir los achivos al release.
   release:
     needs: [mingw, msvc, linux, macos] # Espera a que todos terminen
-    if: startsWith(github.ref, 'refs/tags/') # Solo se ejecuta si es un tag (ej: v1.0)
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
