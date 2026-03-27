@@ -192,18 +192,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ./artifacts/build-mingw-i686/*.exe
-            ./artifacts/build-mingw-i686/*.dll
-            ./artifacts/build-mingw-x86_64/*.exe
-            ./artifacts/build-mingw-x86_64/*.dll
-            ./artifacts/build-msvc-x86/*.exe
-            ./artifacts/build-msvc-x86/*.dll
-            ./artifacts/build-msvc-x64/*.exe
-            ./artifacts/build-msvc-x64/*.dll
-            ./artifacts/build-linux-gcc/q2pro*
-            ./artifacts/build-linux-gcc/*.so
-            ./artifacts/build-macos/q2pro*
-            ./artifacts/build-macos/*.dylib
+           ./temp_artifacts/*.zip
           draft: false
           prerelease: false
         env:
