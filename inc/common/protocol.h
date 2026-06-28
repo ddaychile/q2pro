@@ -160,6 +160,9 @@ typedef enum {
     svc_configstringstream,
     svc_baselinestream,
 
+    // Anticheat check list (file hashes + cvar rules)
+    svc_acdata,
+
     svc_num_types
 } svc_ops_t;
 
@@ -217,7 +220,13 @@ typedef enum {
     // Q2PRO specific operations
     clc_move_nodelta = 10,
     clc_move_batched,
-    clc_userinfo_delta
+    clc_userinfo_delta,
+
+    // Anticheat screenshot
+    clc_screenshot = 20,   // [short width][short height][long jpeg_size][jpeg_data...]
+
+    // Anticheat client data (file hashes + cvar values)
+    clc_acdata = 21        // [ac_data_message]
 } clc_ops_t;
 
 //==============================================

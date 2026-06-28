@@ -33,7 +33,10 @@ typedef enum {
     ACS_PONG,
     ACS_UPDATE_REQUIRED,
     ACS_DISCONNECT,
-    ACS_ERROR
+    ACS_ERROR,
+    ACS_REQUEST_SCREENSHOT,
+    ACS_SCREENSHOT_ACK,
+    ACS_CVARWARNING
 } ac_serverbyte_t;
 
 typedef enum {
@@ -45,7 +48,9 @@ typedef enum {
     ACC_QUERYCLIENT,
     ACC_PING,
     ACC_UPDATECHECKS,
-    ACC_SETPREFERENCES
+    ACC_SETPREFERENCES,
+    ACC_SCREENSHOT_DATA = 9,
+    ACC_CLIENTDATA = 10
 } ac_clientbyte_t;
 
 typedef enum {
@@ -91,6 +96,7 @@ typedef struct {
     unsigned last_ping;
     netstream_t stream;
     unsigned msglen;
+    unsigned last_enforcement;
 } ac_locals_t;
 
 typedef struct {
@@ -273,6 +279,24 @@ badhash:
         }
         if (strstr(data, "negative")) {
             flags |= ACH_NEGATIVE;
+        }
+    }
+
+    // Strip game directory prefix so client's FS_LoadFile can find the file.
+    // anticheat-hashes.txt stores paths like "dday/players/grm/tris.md2" but
+    // the client already searches within the game directory, so it needs
+    // "players/grm/tris.md2".
+    {
+        char game[MAX_QPATH];
+        size_t gamelen;
+
+        Cvar_VariableStringBuffer("game", game, sizeof(game));
+        gamelen = strlen(game);
+
+        if (gamelen > 0 && pathlen > gamelen + 1 &&
+            !strncmp(pstr, game, gamelen) && pstr[gamelen] == '/') {
+            pstr += gamelen + 1;
+            pathlen -= gamelen + 1;
         }
     }
 
@@ -460,9 +484,13 @@ static void AC_LoadChecks(void)
         Com_Printf("ANTICHEAT: No file hashes were loaded, "
                    "please check the " AC_HASHES_NAME ".\n");
         strcpy(acs.hashlist_name, "none");
-    } else if (!acs.hashlist_name[0]) {
-        Q_snprintf(acs.hashlist_name, MAX_QPATH, "unknown (%d %s)",
-                   acs.num_files, acs.num_files == 1 ? "entry" : "entries");
+    } else {
+        if (!acs.hashlist_name[0]) {
+            Q_snprintf(acs.hashlist_name, MAX_QPATH, "unknown (%d %s)",
+                       acs.num_files, acs.num_files == 1 ? "entry" : "entries");
+        }
+        Com_Printf("ANTICHEAT: Loaded %d file hashes from " AC_HASHES_NAME "\n",
+                   acs.num_files);
     }
 
     if (!AC_ParseFile(AC_CVARS_NAME, AC_ParseCvar, 0)) {
@@ -471,6 +499,9 @@ static void AC_LoadChecks(void)
     } else if (!acs.num_cvars) {
         Com_Printf("ANTICHEAT: No cvar checks were loaded, "
                    "please check the " AC_CVARS_NAME ".\n");
+    } else {
+        Com_Printf("ANTICHEAT: Loaded %d cvar checks from " AC_CVARS_NAME "\n",
+                   acs.num_cvars);
     }
 
     AC_ParseFile("anticheat-tokens.txt", AC_ParseToken, 0);
@@ -636,6 +667,31 @@ static client_t *AC_ParseClient(void)
     }
 
     return cl;
+}
+
+static void AC_ParseCvarWarning(void)
+{
+    client_t        *cl;
+    char            reason[64];
+
+    cl = AC_ParseClient();
+    if (!cl) {
+        return;
+    }
+
+    if (msg_read.readcount + 1 > msg_read.cursize) {
+        Com_DPrintf("ANTICHEAT: Message too short in %s\n", __func__);
+        return;
+    }
+
+    MSG_ReadString(reason, sizeof(reason));
+
+    Com_Printf("ANTICHEAT CVARWARNING: %s[%s]: %s\n",
+               cl->name, NET_AdrToString(&cl->netchan.remote_address), reason);
+
+    // Server already applied correct cvar values via AC_EnforceClientCvars stufftext.
+    // Tell the client to reconnect so it resends clc_acdata with corrected values.
+    SV_ClientCommand(cl, "reconnect\n");
 }
 
 static void AC_ParseViolation(void)
@@ -934,6 +990,9 @@ static bool AC_ParseMessage(void)
         break;
     case ACS_FILE_VIOLATION:
         AC_ParseFileViolation();
+        break;
+    case ACS_CVARWARNING:
+        AC_ParseCvarWarning();
         break;
     case ACS_READY:
         AC_ParseReady();
@@ -1304,7 +1363,7 @@ static void AC_SendHello(void)
     size_t verlen = strlen(com_version->string);
 
     MSG_WriteByte(0x02);
-    MSG_WriteShort(22 + hostlen + verlen);   // why 22 instead of 9?
+    MSG_WriteShort(11 + hostlen + verlen);
     MSG_WriteByte(ACC_VERSION);
     MSG_WriteShort(AC_PROTOCOL_VERSION);
     MSG_WriteShort(hostlen);
@@ -1718,10 +1777,267 @@ static void ac_disable_play_changed(cvar_t *self)
     }
 }
 
+void AC_ForwardScreenshot(client_t *cl, int width, int height, const byte *jpeg, int jpeg_size)
+{
+    if (!ac.ready) {
+        return; // not connected to anticheat server
+    }
+
+    if (!ac_required->integer) {
+        return; // anticheat not in use
+    }
+
+    // Build ACC_SCREENSHOT_DATA message
+    // Format: [uint8 cmd=9][uint32 client_id][uint32 challenge][uint16 width][uint16 height][uint32 jpeg_size][jpeg_data...]
+    MSG_WriteShort(1 + 4 + 4 + 2 + 2 + 4 + jpeg_size); // total payload length
+    MSG_WriteByte(ACC_SCREENSHOT_DATA);
+    MSG_WriteLong(cl->number);
+    MSG_WriteLong(cl->challenge);
+    MSG_WriteShort(width);
+    MSG_WriteShort(height);
+    MSG_WriteLong(jpeg_size);
+    MSG_WriteData(jpeg, jpeg_size);
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Forwarded screenshot from %s (%dx%d, %d bytes)\n",
+                cl->name, width, height, jpeg_size);
+}
+
+/*
+==============================================================================
+
+CVAR ENFORCEMENT
+
+==============================================================================
+*/
+
+static const char *AC_GetEnforceValue(const ac_cvar_t *cvar)
+{
+    switch (cvar->op) {
+    case OP_NEQUAL:
+    case OP_STRNEQUAL:
+        return cvar->def;
+    case OP_EQUAL:
+    case OP_STREQUAL:
+    case OP_STRSTR:
+    case OP_GT:
+    case OP_GTEQUAL:
+    case OP_LT:
+    case OP_LTEQUAL:
+        return cvar->values[0];
+    default:
+        return cvar->def;
+    }
+}
+
+static void AC_EnforceCvar(client_t *cl, const ac_cvar_t *cvar, const char *actual_value)
+{
+    const char *enforce_value;
+
+    if (!actual_value || !actual_value[0]) {
+        return;
+    }
+
+    enforce_value = AC_GetEnforceValue(cvar);
+
+    if (strcmp(actual_value, enforce_value) == 0) {
+        return;
+    }
+
+    Com_DPrintf("ANTICHEAT: Enforcing %s on %s: %s -> %s\n",
+                cvar->name, cl->name, actual_value, enforce_value);
+
+    SV_ClientCommand(cl, "set %s %s\n", cvar->name, enforce_value);
+}
+
+void AC_EnforceClientCvars(client_t *cl, int num_files, int num_cvars)
+{
+    int i;
+    byte path_len;
+    const ac_cvar_t *cvar;
+    char name[64];
+    char value[256];
+    int saved_readcount;
+
+    if (!ac.ready || !ac_required->integer) {
+        return;
+    }
+
+    if (!cl->ac_valid) {
+        return;
+    }
+
+    saved_readcount = msg_read.readcount;
+
+    // Skip file entries: [20 bytes hash][1 byte flags][1 byte path_len][path_bytes]
+    for (i = 0; i < num_files; i++) {
+        if (msg_read.readcount + 22 > msg_read.cursize) {
+            goto restore;
+        }
+        msg_read.readcount += 20; // hash
+        msg_read.readcount += 1;  // flags
+        path_len = msg_read.data[msg_read.readcount++];
+        msg_read.readcount += path_len;
+    }
+
+    // Parse cvar entries: [name_len][name][value_len][value]
+    for (i = 0; i < num_cvars; i++) {
+        byte name_len, val_len;
+
+        if (msg_read.readcount + 2 > msg_read.cursize) {
+            break;
+        }
+
+        name_len = msg_read.data[msg_read.readcount++];
+        if (name_len >= sizeof(name) || msg_read.readcount + name_len > msg_read.cursize) {
+            break;
+        }
+        memcpy(name, msg_read.data + msg_read.readcount, name_len);
+        name[name_len] = 0;
+        msg_read.readcount += name_len;
+
+        if (msg_read.readcount + 1 > msg_read.cursize) {
+            break;
+        }
+        val_len = msg_read.data[msg_read.readcount++];
+        if (msg_read.readcount + val_len > msg_read.cursize) {
+            break;
+        }
+        memcpy(value, msg_read.data + msg_read.readcount, val_len);
+        value[val_len] = 0;
+        msg_read.readcount += val_len;
+
+        // Find matching cvar rule and enforce
+        for (cvar = acs.cvars; cvar; cvar = cvar->next) {
+            if (!strcmp(cvar->name, name)) {
+                AC_EnforceCvar(cl, cvar, value);
+                break;
+            }
+        }
+    }
+
+restore:
+    msg_read.readcount = saved_readcount;
+}
+
+void AC_PeriodicEnforcement(void)
+{
+    client_t *cl;
+    ac_cvar_t *c;
+
+    if (!ac.ready || !ac_required->integer) {
+        return;
+    }
+
+    if (svs.realtime - ac.last_enforcement < 10000) {
+        return;
+    }
+
+    ac.last_enforcement = svs.realtime;
+
+    FOR_EACH_CLIENT(cl) {
+        if (cl->state != cs_spawned || !cl->ac_valid) {
+            continue;
+        }
+        for (c = acs.cvars; c; c = c->next) {
+            SV_ClientCommand(cl, "set %s %s\n", c->name, c->def);
+        }
+    }
+}
+
+void AC_ForwardACData(client_t *cl, int num_files, int num_cvars)
+{
+    size_t data_size;
+    byte *data;
+    int total;
+
+    if (!ac.ready) {
+        return;
+    }
+
+    if (!ac_required->integer) {
+        return;
+    }
+
+    // Read all remaining raw file+cvar data from the client message
+    data_size = SZ_Remaining(&msg_read);
+    data = MSG_ReadData(data_size);
+    if (!data) {
+        Com_WPrintf("ANTICHEAT: Failed to read ACData from %s\n", cl->name);
+        return;
+    }
+
+    // Build ACC_CLIENTDATA: cmd + clientID + challenge + nameLen + name + numFiles + numCvars + raw data
+    {
+        size_t namelen = strlen(cl->name);
+        total = 1 + 4 + 4 + 1 + (int)namelen + 4 + 4 + (int)data_size;
+        MSG_WriteShort(total);
+        MSG_WriteByte(ACC_CLIENTDATA);
+        MSG_WriteLong(cl->number);
+        MSG_WriteLong(cl->challenge);
+        MSG_WriteByte((byte)namelen);
+        MSG_WriteData(cl->name, namelen);
+        MSG_WriteLong(num_files);
+        MSG_WriteLong(num_cvars);
+        MSG_WriteData(data, data_size);
+    }
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Forwarded ACData from %s (%d files, %d cvars, %zu bytes)\n",
+                cl->name, num_files, num_cvars, data_size);
+}
+
+void SV_SendACData(client_t *cl)
+{
+    ac_file_t *f;
+    ac_cvar_t *c;
+    int i;
+    char prev_path[MAX_QPATH];
+
+    if (!ac.ready) {
+        return;
+    }
+
+    MSG_WriteByte(svc_acdata);
+    MSG_WriteLong(acs.num_files);
+    MSG_WriteLong(acs.num_cvars);
+
+    prev_path[0] = 0;
+    for (f = acs.files; f; f = f->next) {
+        MSG_WriteData(f->hash, sizeof(f->hash));
+        MSG_WriteByte(f->flags);
+
+        if (prev_path[0] && !strcmp(f->path, prev_path)) {
+            MSG_WriteByte(0);
+        } else {
+            MSG_WriteByte(strlen(f->path));
+            MSG_WriteData(f->path, strlen(f->path));
+            Q_strlcpy(prev_path, f->path, sizeof(prev_path));
+        }
+    }
+
+    for (c = acs.cvars; c; c = c->next) {
+        MSG_WriteByte(strlen(c->name));
+        MSG_WriteData(c->name, strlen(c->name));
+        MSG_WriteByte(c->op);
+        MSG_WriteByte(c->num_values);
+        for (i = 0; i < c->num_values; i++) {
+            MSG_WriteByte(strlen(c->values[i]));
+            MSG_WriteData(c->values[i], strlen(c->values[i]));
+        }
+        MSG_WriteByte(strlen(c->def));
+        MSG_WriteData(c->def, strlen(c->def));
+    }
+
+    SV_ClientAddMessage(cl, MSG_RELIABLE | MSG_CLEAR);
+}
+
 void AC_Register(void)
 {
-    ac_required = Cvar_Get("sv_anticheat_required", "0", CVAR_LATCH);
-    ac_server_address = Cvar_Get("sv_anticheat_server_address", "anticheat.r1ch.net", CVAR_LATCH);
+    ac_required = Cvar_Get("sv_anticheat_required", "1", CVAR_LATCH);
+    ac_server_address = Cvar_Get("sv_anticheat_server_address", "ac.dday.cl:27915", CVAR_LATCH);
     ac_error_action = Cvar_Get("sv_anticheat_error_action", "0", 0);
     ac_message = Cvar_Get("sv_anticheat_message",
                           "This server requires the r1ch.net anticheat module. "
@@ -1736,3 +2052,4 @@ void AC_Register(void)
 
     Cmd_Register(c_ac);
 }
+ 

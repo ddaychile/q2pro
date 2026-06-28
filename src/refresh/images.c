@@ -2219,6 +2219,132 @@ fail:
     Com_Error(ERR_FATAL, "Couldn't load %s: %s", R_COLORMAP_PCX, Q_ErrorString(ret));
 }
 
+/*
+===============
+IMG_CompressJPEG
+
+Compress screenshot to JPEG in memory buffer
+===============
+*/
+#if USE_JPG
+int IMG_CompressJPEG(const screenshot_t *s, byte **out, size_t *out_size, int quality)
+{
+    struct jpeg_compress_struct cinfo;
+    struct my_error_mgr jerr;
+    JSAMPARRAY row_pointers;
+    unsigned char *outbuf = NULL;
+    unsigned long outsize = 0;
+    int i, ret;
+
+    if (!s || !s->pixels || !out || !out_size)
+        return Q_ERR(EINVAL);
+
+    cinfo.err = jpeg_std_error(&jerr.pub);
+    jerr.pub.error_exit = my_error_exit;
+    jerr.pub.output_message = my_output_message;
+    jerr.filename = NULL;
+
+    if (setjmp(jerr.setjmp_buffer)) {
+        jpeg_destroy_compress(&cinfo);
+        if (outbuf)
+            free(outbuf);
+        return Q_ERR_LIBRARY_ERROR;
+    }
+
+    jpeg_create_compress(&cinfo);
+    jpeg_mem_dest(&cinfo, &outbuf, &outsize);
+
+    cinfo.image_width = s->width;
+    cinfo.image_height = s->height;
+    cinfo.input_components = s->bpp;
+    cinfo.in_color_space = s->bpp == 4 ? JCS_EXT_RGBA : JCS_RGB;
+
+    jpeg_set_defaults(&cinfo);
+    jpeg_set_quality(&cinfo, Q_clip(quality, 0, 100), TRUE);
+
+    row_pointers = malloc(sizeof(JSAMPROW) * s->height);
+    if (!row_pointers) {
+        jpeg_destroy_compress(&cinfo);
+        free(outbuf);
+        return Q_ERR(ENOMEM);
+    }
+
+    for (i = 0; i < s->height; i++)
+        row_pointers[i] = (JSAMPROW)(s->pixels + (s->height - i - 1) * s->rowbytes);
+
+    jpeg_start_compress(&cinfo, TRUE);
+    jpeg_write_scanlines(&cinfo, row_pointers, s->height);
+    jpeg_finish_compress(&cinfo);
+
+    free(row_pointers);
+    jpeg_destroy_compress(&cinfo);
+
+    *out = Z_Malloc(outsize);
+    if (!*out) {
+        free(outbuf);
+        return Q_ERR(ENOMEM);
+    }
+    memcpy(*out, outbuf, outsize);
+    *out_size = outsize;
+
+    free(outbuf);
+    return Q_ERR_SUCCESS;
+}
+#endif
+
+/*
+===============
+IMG_Downscale
+
+Downscale screenshot to smaller dimensions using nearest-neighbor sampling
+===============
+*/
+int IMG_Downscale(screenshot_t *dst, const screenshot_t *src, int new_width, int new_height)
+{
+    int x, y;
+    int src_x, src_y;
+    int bpp;
+    int dst_rowbytes;
+    byte *dst_pixels;
+
+    if (!dst || !src || !src->pixels)
+        return Q_ERR(EINVAL);
+
+    if (new_width <= 0 || new_height <= 0)
+        return Q_ERR(EINVAL);
+
+    bpp = src->bpp;
+    dst_rowbytes = new_width * bpp;
+
+    dst_pixels = Z_TagMalloc(dst_rowbytes * new_height, TAG_RENDERER);
+    if (!dst_pixels)
+        return Q_ERR(ENOMEM);
+
+    for (y = 0; y < new_height; y++) {
+        src_y = (y * src->height) / new_height;
+        for (x = 0; x < new_width; x++) {
+            src_x = (x * src->width) / new_width;
+            memcpy(dst_pixels + y * dst_rowbytes + x * bpp,
+                   src->pixels + src_y * src->rowbytes + src_x * bpp,
+                   bpp);
+        }
+    }
+
+    dst->pixels = dst_pixels;
+    dst->width = new_width;
+    dst->height = new_height;
+    dst->rowbytes = dst_rowbytes;
+    dst->bpp = bpp;
+    dst->save_cb = NULL;
+    dst->fp = NULL;
+    dst->filename = NULL;
+    dst->status = 0;
+    dst->param = 0;
+    dst->async = false;
+
+    return Q_ERR_SUCCESS;
+}
+
 static const cmdreg_t img_cmd[] = {
     { "imagelist", IMG_List_f, IMG_List_c },
     { "screenshot", IMG_ScreenShot_f },

@@ -245,3 +245,20 @@ void    R_ModeChanged(int width, int height, int flags);
 bool    R_VideoSync(void);
 
 r_opengl_config_t R_GetGLConfig(void);
+
+// Anticheat screenshot support
+typedef struct screenshot_s screenshot_t;
+typedef int (*save_cb_t)(const screenshot_t *);
+
+struct screenshot_s {
+    save_cb_t save_cb;
+    byte *pixels;
+    FILE *fp;
+    char *filename;
+    int width, height, rowbytes, bpp, status, param;
+    bool async;
+};
+
+int     IMG_ReadPixels(screenshot_t *s);
+int     IMG_CompressJPEG(const screenshot_t *s, byte **out, size_t *out_size, int quality);
+int     IMG_Downscale(screenshot_t *dst, const screenshot_t *src, int new_width, int new_height);

@@ -52,6 +52,8 @@ client_src = [
   'src/client/predict.c',
   'src/client/refresh.c',
   'src/client/screen.c',
+  'src/client/screenshot_ac.c',
+  'src/client/ac_data.c',
   'src/client/sound/main.c',
   'src/client/sound/mem.c',
   'src/client/tent.c',
@@ -65,6 +67,7 @@ client_src = [
   'src/server/send.c',
   'src/server/user.c',
   'src/server/world.c',
+  'src/server/sv_screenshot.c',
   'src/shared/m_flash.c',
 ]
 
@@ -106,6 +109,7 @@ server_src = [
   'src/server/send.c',
   'src/server/user.c',
   'src/server/world.c',
+  'src/server/sv_screenshot.c',
 ]
 
 game_src = [

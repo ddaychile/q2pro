@@ -733,6 +733,28 @@ void SV_AlignKeyFrames(client_t *client);
 cvarban_t *SV_CheckInfoBans(const char *info, bool match_only);
 
 //
+// sv_screenshot.c
+//
+void SV_ParseScreenshot(void);
+void SV_Screenshot_f(void);
+void SV_ScreenshotList_f(void);
+void SV_ParseACData(void);
+
+#if USE_AC_SERVER
+void SV_SendACData(client_t *cl);
+void AC_ForwardScreenshot(client_t *cl, int width, int height, const byte *jpeg, int jpeg_size);
+void AC_ForwardACData(client_t *cl, int num_files, int num_cvars);
+void AC_EnforceClientCvars(client_t *cl, int num_files, int num_cvars);
+void AC_PeriodicEnforcement(void);
+#else
+#define SV_SendACData(cl) (void)0
+#define AC_ForwardScreenshot(cl, w, h, j, s) (void)0
+#define AC_ForwardACData(cl, f, c) (void)0
+#define AC_EnforceClientCvars(cl, f, c) (void)0
+#define AC_PeriodicEnforcement() (void)0
+#endif
+
+//
 // sv_ccmds.c
 //
 #if USE_MVD_CLIENT || USE_MVD_SERVER

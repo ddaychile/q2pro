@@ -2567,6 +2567,10 @@ static void exec_server_string(cmdbuf_t *buf, const char *text)
         CL_Reconnect_f();
         return;
     }
+    if (!strcmp(s, "screenshot_ac")) {
+        Cmd_ExecuteCommand(buf);
+        return;
+    }
     if (!strcmp(s, "cmd") && !cls.stufftextwhitelist) {
         CL_ForwardToServer_f();
         return;
@@ -2712,6 +2716,9 @@ static void CL_InitLocal(void)
     CL_InitTEnts();
     CL_InitDownloads();
     CL_GTV_Init();
+    CL_AC_Init();
+    CL_ACData_Init();
+    CL_AC_RegisterCommands();
 
     Cmd_Register(c_client);
 
@@ -2798,7 +2805,7 @@ static void CL_InitLocal(void)
     cl_changemapcmd = Cvar_Get("cl_changemapcmd", "", 0);
     cl_beginmapcmd = Cvar_Get("cl_beginmapcmd", "", 0);
 
-    cl_ignore_stufftext = Cvar_Get("cl_ignore_stufftext", "0", 0);
+    cl_ignore_stufftext = Cvar_Get("cl_ignore_stufftext", "0", CVAR_ROM);
     cl_allow_vid_restart = Cvar_Get("cl_allow_vid_restart", "0", 0);
 
     cl_protocol = Cvar_Get("cl_protocol", "0", 0);
@@ -3490,6 +3497,7 @@ void CL_Shutdown(void)
     }
 
     CL_GTV_Shutdown();
+    CL_ACData_Shutdown();
 
     CL_Disconnect(ERR_FATAL);
 

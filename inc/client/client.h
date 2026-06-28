@@ -74,6 +74,16 @@ bool CL_GetDemoInfo(const char *path, demoInfo_t *info);
 bool CL_CheatsOK(void);
 void CL_SetSky(void);
 
+// Anticheat screenshot functions
+void CL_AC_Init(void);
+void CL_AC_SendScreenshot(void);
+void CL_AC_RegisterCommands(void);
+
+// Anticheat data functions
+void CL_ParseACData(void);
+void CL_ACData_Init(void);
+void CL_ACData_Shutdown(void);
+
 #if USE_CURL
 int HTTP_FetchFile(const char *url, void **data);
 #define HTTP_FreeFile(data) free(data)

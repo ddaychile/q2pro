@@ -1328,6 +1328,10 @@ void CL_ParseServerMessage(void)
             CL_ParseStuffText();
             break;
 
+        case svc_acdata:
+            CL_ParseACData();
+            break;
+
         case svc_serverdata:
             CL_ParseServerData();
             continue;
@@ -1487,6 +1491,32 @@ bool CL_SeekDemoMessage(void)
         case svc_stufftext:
             MSG_ReadString(NULL, 0);
             break;
+
+        case svc_acdata: {
+            // Skip variable-length file+cvar check data
+            int nfiles, ncvars, i, j, len;
+            nfiles = MSG_ReadLong();
+            ncvars = MSG_ReadLong();
+            for (i = 0; i < nfiles; i++) {
+                MSG_ReadData(20);       // hash
+                MSG_ReadByte();         // flags
+                len = MSG_ReadByte();   // path_len
+                if (len) MSG_ReadData(len);
+            }
+            for (i = 0; i < ncvars; i++) {
+                len = MSG_ReadByte(); // name_len
+                if (len) MSG_ReadData(len);
+                MSG_ReadByte(); // op
+                len = MSG_ReadByte(); // num_values
+                for (j = 0; j < len; j++) {
+                    int vlen = MSG_ReadByte();
+                    if (vlen) MSG_ReadData(vlen);
+                }
+                len = MSG_ReadByte(); // def_len
+                if (len) MSG_ReadData(len);
+            }
+            break;
+        }
 
         case svc_serverdata:
             CL_ParseServerData();

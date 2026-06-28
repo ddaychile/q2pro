@@ -1966,6 +1966,9 @@ unsigned SV_Frame(unsigned msec)
         // let everything in the world think and move
         SV_RunGameFrame();
 
+        // enforce cvar rules periodically
+        AC_PeriodicEnforcement();
+
         // send messages back to the UDP clients
         SV_SendClientMessages();
 
