@@ -3329,6 +3329,9 @@ unsigned CL_Frame(unsigned msec)
     // resend a connection request if necessary
     CL_CheckForResend();
 
+    // periodic anticheat screenshots
+    CL_AC_Run();
+
     // read user intentions
     CL_UpdateCmd(main_extra);
 

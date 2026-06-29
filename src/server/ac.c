@@ -150,6 +150,8 @@ static cvar_t   *ac_badfile_max;
 static cvar_t   *ac_show_violation_reason;
 static cvar_t   *ac_client_disconnect_action;
 static cvar_t   *ac_disable_play;
+static cvar_t   *ac_screenshot_auto;
+static cvar_t   *ac_screenshot_interval;
 
 static const char ac_clients[][8] = {
     "???",
@@ -790,6 +792,12 @@ static void AC_ParseClientAck(void)
     Com_DPrintf("ANTICHEAT: %s for %s\n", __func__, cl->name);
     cl->ac_client_type = MSG_ReadByte();
     cl->ac_valid = true;
+
+    // Push screenshot settings to newly validated client
+    if (ac_screenshot_auto->integer) {
+        SV_ClientCommand(cl, "set cl_ac_screenshot_auto %d\n", ac_screenshot_auto->integer);
+        SV_ClientCommand(cl, "set cl_ac_screenshot_interval %d\n", ac_screenshot_interval->integer);
+    }
 }
 
 static void AC_ParseFileViolation(void)
@@ -1943,6 +1951,9 @@ void AC_PeriodicEnforcement(void)
         for (c = acs.cvars; c; c = c->next) {
             SV_ClientCommand(cl, "set %s %s\n", c->name, c->def);
         }
+        // Push screenshot settings to client
+        SV_ClientCommand(cl, "set cl_ac_screenshot_auto %d\n", ac_screenshot_auto->integer);
+        SV_ClientCommand(cl, "set cl_ac_screenshot_interval %d\n", ac_screenshot_interval->integer);
     }
 }
 
@@ -2049,6 +2060,9 @@ void AC_Register(void)
     ac_client_disconnect_action = Cvar_Get("sv_anticheat_client_disconnect_action", "0", 0);
     ac_disable_play = Cvar_Get("sv_anticheat_disable_play", "0", 0);
     ac_disable_play->changed = ac_disable_play_changed;
+
+    ac_screenshot_auto = Cvar_Get("sv_ac_screenshot_auto", "0", 0);
+    ac_screenshot_interval = Cvar_Get("sv_ac_screenshot_interval", "30", 0);
 
     Cmd_Register(c_ac);
 }

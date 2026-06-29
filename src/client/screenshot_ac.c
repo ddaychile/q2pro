@@ -18,6 +18,11 @@ the Free Software Foundation; either version 2 of the License, or
 static cvar_t *cl_ac_screenshot_enabled;
 static cvar_t *cl_ac_screenshot_quality;
 static cvar_t *cl_ac_screenshot_scale;
+static cvar_t *cl_ac_screenshot_auto;
+static cvar_t *cl_ac_screenshot_interval;
+
+// State
+static unsigned cl_ac_screenshot_last;
 
 /*
 ===============
@@ -31,6 +36,8 @@ void CL_AC_Init(void)
     cl_ac_screenshot_enabled = Cvar_Get("cl_ac_screenshot_enabled", "1", 0);
     cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "45", 0);
     cl_ac_screenshot_scale = Cvar_Get("cl_ac_screenshot_scale", "0.25", 0);
+    cl_ac_screenshot_auto = Cvar_Get("cl_ac_screenshot_auto", "0", 0);
+    cl_ac_screenshot_interval = Cvar_Get("cl_ac_screenshot_interval", "30", 0);
 }
 
 /*
@@ -125,6 +132,28 @@ void CL_AC_SendScreenshot(void)
     Z_Free(jpeg_buf);
     Z_Free(s_small.pixels);
     Z_Free(s_full.pixels);
+}
+
+/*
+===============
+CL_AC_Run
+
+Periodic automatic screenshot check, called from CL_Frame
+===============
+*/
+void CL_AC_Run(void)
+{
+    if (!cl_ac_screenshot_auto->integer)
+        return;
+    if (!cl_ac_screenshot_enabled->integer)
+        return;
+    if (cls.state < ca_active)
+        return;
+    if (cls.realtime - cl_ac_screenshot_last < (unsigned)(cl_ac_screenshot_interval->integer * 1000))
+        return;
+
+    cl_ac_screenshot_last = cls.realtime;
+    CL_AC_SendScreenshot();
 }
 
 /*

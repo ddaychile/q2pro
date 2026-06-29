@@ -77,6 +77,7 @@ void CL_SetSky(void);
 // Anticheat screenshot functions
 void CL_AC_Init(void);
 void CL_AC_SendScreenshot(void);
+void CL_AC_Run(void);
 void CL_AC_RegisterCommands(void);
 
 // Anticheat data functions
