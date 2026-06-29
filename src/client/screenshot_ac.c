@@ -125,6 +125,12 @@ void CL_AC_SendScreenshot(void)
         cl.history[i].cmdNumber = cl.cmdNumber;
     }
 
+    // Force immediate send on next CL_SendBatchedCmd call.
+    // The screenshot blocked for a long time but cls.realtime did not
+    // advance during the block, so ready_to_send() would keep returning
+    // false and usercmds would accumulate past MAX_PACKET_USERCMDS.
+    cl.lastTransmitTime = 0;
+
     Com_DPrintf("AC Screenshot: Sent %dx%d JPEG (%zu bytes)\n",
                 s_small.width, s_small.height, jpeg_size);
 
