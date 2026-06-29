@@ -139,7 +139,6 @@ and forward to AC server as ACC_CLIENTDATA
 void SV_ParseACData(void)
 {
     int num_files, num_cvars;
-    int i;
 
     if (!sv_client) {
         return;
