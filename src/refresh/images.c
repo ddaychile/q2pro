@@ -2294,6 +2294,91 @@ int IMG_CompressJPEG(const screenshot_t *s, byte **out, size_t *out_size, int qu
 
 /*
 ===============
+IMG_CompressJPEG_AC
+
+Compress screenshot to JPEG with optimized settings for anticheat.
+Uses Huffman optimization, float DCT, and smoothing for better
+quality-to-size ratio. Intended to be called from async worker thread.
+===============
+*/
+#if USE_JPG
+int IMG_CompressJPEG_AC(const screenshot_t *s, byte **out, size_t *out_size, int quality)
+{
+    struct jpeg_compress_struct cinfo;
+    struct my_error_mgr jerr;
+    JSAMPARRAY row_pointers;
+    unsigned char *outbuf = NULL;
+    unsigned long outsize = 0;
+    int i, ret;
+
+    if (!s || !s->pixels || !out || !out_size)
+        return Q_ERR(EINVAL);
+
+    cinfo.err = jpeg_std_error(&jerr.pub);
+    jerr.pub.error_exit = my_error_exit;
+    jerr.pub.output_message = my_output_message;
+    jerr.filename = NULL;
+
+    if (setjmp(jerr.setjmp_buffer)) {
+        jpeg_destroy_compress(&cinfo);
+        if (outbuf)
+            free(outbuf);
+        return Q_ERR_LIBRARY_ERROR;
+    }
+
+    jpeg_create_compress(&cinfo);
+    jpeg_mem_dest(&cinfo, &outbuf, &outsize);
+
+    cinfo.image_width = s->width;
+    cinfo.image_height = s->height;
+    cinfo.input_components = s->bpp;
+    cinfo.in_color_space = s->bpp == 4 ? JCS_EXT_RGBA : JCS_RGB;
+
+    jpeg_set_defaults(&cinfo);
+
+    // Optimized Huffman coding: -5-15% size at same quality (slower encode)
+    cinfo.optimize_coding = TRUE;
+
+    // Float DCT for better quality at same file size (slower)
+    cinfo.dct_method = JDCT_FLOAT;
+
+    // Light smoothing to reduce noise before compression
+    cinfo.smoothing_factor = 25;
+
+    jpeg_set_quality(&cinfo, Q_clip(quality, 0, 100), TRUE);
+
+    row_pointers = malloc(sizeof(JSAMPROW) * s->height);
+    if (!row_pointers) {
+        jpeg_destroy_compress(&cinfo);
+        free(outbuf);
+        return Q_ERR(ENOMEM);
+    }
+
+    for (i = 0; i < s->height; i++)
+        row_pointers[i] = (JSAMPROW)(s->pixels + (s->height - i - 1) * s->rowbytes);
+
+    jpeg_start_compress(&cinfo, TRUE);
+    jpeg_write_scanlines(&cinfo, row_pointers, s->height);
+    jpeg_finish_compress(&cinfo);
+
+    free(row_pointers);
+    jpeg_destroy_compress(&cinfo);
+
+    *out = Z_Malloc(outsize);
+    if (!*out) {
+        free(outbuf);
+        return Q_ERR(ENOMEM);
+    }
+    memcpy(*out, outbuf, outsize);
+    *out_size = outsize;
+
+    free(outbuf);
+    return Q_ERR_SUCCESS;
+}
+#endif
+
+/*
+===============
 IMG_Downscale
 
 Downscale screenshot to smaller dimensions using nearest-neighbor sampling

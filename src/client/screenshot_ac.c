@@ -8,11 +8,12 @@ the Free Software Foundation; either version 2 of the License, or
 */
 
 //
-// Client-side anticheat screenshot capture and send
+// Client-side anticheat screenshot capture and send (async)
 //
 
 #include "client.h"
 #include "refresh/refresh.h"
+#include "common/async.h"
 
 // Cvars
 static cvar_t *cl_ac_screenshot_enabled;
@@ -23,6 +24,134 @@ static cvar_t *cl_ac_screenshot_interval;
 
 // State
 static unsigned cl_ac_screenshot_last;
+static bool cl_ac_screenshot_pending;
+
+/*
+Work structure passed between main thread and async worker thread.
+Lifespan:
+  - Allocated on main thread before Com_QueueAsyncWork
+  - Com_QueueAsyncWork copies the asyncwork_t (which points to this via cb_arg)
+  - work_cb runs on worker thread: reads pixels, downscales, compresses
+  - done_cb runs on main thread (via Com_CompleteAsyncWork): sends via netchan
+  - Freed in done_cb
+*/
+typedef struct {
+    // input (ownership of pixels transfers here)
+    byte   *pixels;
+    int     width, height, bpp, rowbytes;
+    int     target_width, target_height;
+    int     quality;
+    // output from worker thread
+    byte   *jpeg_buf;
+    size_t  jpeg_size;
+    int     out_width, out_height;
+    int     status;     // 0 = ok, <0 = error
+} ac_screenshot_work_t;
+
+/*
+===============
+cl_ac_screenshot_work_cb
+
+Worker thread: downscale pixels and compress to JPEG.
+All CPU-heavy work happens here, never touches GL context.
+===============
+*/
+static void cl_ac_screenshot_work_cb(void *arg)
+{
+    ac_screenshot_work_t *work = arg;
+    screenshot_t s_src, s_small;
+    int ret;
+
+    // Set up source screenshot for downscale
+    memset(&s_src, 0, sizeof(s_src));
+    s_src.pixels = work->pixels;
+    s_src.width = work->width;
+    s_src.height = work->height;
+    s_src.bpp = work->bpp;
+    s_src.rowbytes = work->rowbytes;
+
+    // Downscale
+    memset(&s_small, 0, sizeof(s_small));
+    ret = IMG_Downscale(&s_small, &s_src, work->target_width, work->target_height);
+    if (ret < 0) {
+        work->status = ret;
+        Z_Free(work->pixels);
+        work->pixels = NULL;
+        return;
+    }
+
+    // Free original pixels after downscale
+    Z_Free(work->pixels);
+    work->pixels = NULL;
+
+    // Compress to JPEG with optimized settings
+    ret = IMG_CompressJPEG_AC(&s_small, &work->jpeg_buf, &work->jpeg_size, work->quality);
+    if (ret < 0) {
+        Z_Free(s_small.pixels);
+        work->status = ret;
+        return;
+    }
+
+    work->out_width = s_small.width;
+    work->out_height = s_small.height;
+    work->status = 0;
+
+    Z_Free(s_small.pixels);
+}
+
+/*
+===============
+cl_ac_screenshot_done_cb
+
+Main thread callback: send the compressed JPEG via netchan.
+Called from Com_CompleteAsyncWork on the next frame.
+===============
+*/
+static void cl_ac_screenshot_done_cb(void *arg)
+{
+    ac_screenshot_work_t *work = arg;
+
+    if (work->status < 0) {
+        Com_EPrintf("AC Screenshot: Async compress failed: %s\n", Q_ErrorString(work->status));
+        Z_Free(work->jpeg_buf);
+        Z_Free(work);
+        cl_ac_screenshot_pending = false;
+        return;
+    }
+
+    if (cls.state < ca_connected) {
+        Com_DPrintf("AC Screenshot: Disconnected before send, discarding\n");
+        Z_Free(work->jpeg_buf);
+        Z_Free(work);
+        cl_ac_screenshot_pending = false;
+        return;
+    }
+
+    // Check size fits in message
+    if (work->jpeg_size > 32000) {
+        Com_EPrintf("AC Screenshot: JPEG too large (%zu bytes), discarding\n", work->jpeg_size);
+        Z_Free(work->jpeg_buf);
+        Z_Free(work);
+        cl_ac_screenshot_pending = false;
+        return;
+    }
+
+    // Send to server via netchan
+    MSG_WriteByte(clc_screenshot);
+    MSG_WriteShort(work->out_width);
+    MSG_WriteShort(work->out_height);
+    MSG_WriteLong((int)work->jpeg_size);
+    MSG_WriteData(work->jpeg_buf, work->jpeg_size);
+    Netchan_Transmit(&cls.netchan, msg_write.cursize, msg_write.data, 3);
+    SZ_Clear(&msg_write);
+
+    Com_DPrintf("AC Screenshot: Sent %dx%d JPEG (%zu bytes)\n",
+                work->out_width, work->out_height, work->jpeg_size);
+
+    Z_Free(work->jpeg_buf);
+    Z_Free(work);
+    cl_ac_screenshot_pending = false;
+}
 
 /*
 ===============
@@ -34,7 +163,7 @@ Register anticheat screenshot cvars
 void CL_AC_Init(void)
 {
     cl_ac_screenshot_enabled = Cvar_Get("cl_ac_screenshot_enabled", "1", 0);
-    cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "45", 0);
+    cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "55", 0);
     cl_ac_screenshot_scale = Cvar_Get("cl_ac_screenshot_scale", "0.25", 0);
     cl_ac_screenshot_auto = Cvar_Get("cl_ac_screenshot_auto", "0", 0);
     cl_ac_screenshot_interval = Cvar_Get("cl_ac_screenshot_interval", "30", 0);
@@ -44,15 +173,19 @@ void CL_AC_Init(void)
 ===============
 CL_AC_SendScreenshot
 
-Capture current frame, compress to JPEG, and send to server
+Capture current frame and queue async JPEG compress + send.
 Called when server sends "cmd \177c screenshot_ac\n"
+
+Only GL readback (IMG_ReadPixels) runs on the main thread.
+Downscale + JPEG compress happen on the worker thread.
+Netchan_Transmit happens on the main thread next frame via done_cb.
 ===============
 */
 void CL_AC_SendScreenshot(void)
 {
-    screenshot_t s_full, s_small;
-    byte *jpeg_buf = NULL;
-    size_t jpeg_size = 0;
+    ac_screenshot_work_t *work;
+    screenshot_t s_full;
+    asyncwork_t async;
     int ret;
     int new_width, new_height;
 
@@ -62,7 +195,13 @@ void CL_AC_SendScreenshot(void)
     if (cls.state < ca_connected)
         return;
 
-    // Read framebuffer
+    // Prevent concurrent screenshots
+    if (cl_ac_screenshot_pending) {
+        Com_DPrintf("AC Screenshot: Already pending, skipping\n");
+        return;
+    }
+
+    // Read framebuffer (GL call, must be on main thread)
     memset(&s_full, 0, sizeof(s_full));
     ret = IMG_ReadPixels(&s_full);
     if (ret < 0) {
@@ -79,66 +218,35 @@ void CL_AC_SendScreenshot(void)
     if (new_height < 120) new_height = 120;
 
     // Clamp to maximum that fits in 32KB message
-    // 320x240 at quality 50 should be well under 32KB
     if (new_width > 480) new_width = 480;
     if (new_height > 360) new_height = 360;
 
-    // Downscale
-    memset(&s_small, 0, sizeof(s_small));
-    ret = IMG_Downscale(&s_small, &s_full, new_width, new_height);
-    if (ret < 0) {
-        Com_EPrintf("AC Screenshot: Failed to downscale: %s\n", Q_ErrorString(ret));
-        Z_Free(s_full.pixels);
-        return;
-    }
+    // Allocate work structure
+    work = Z_Malloc(sizeof(*work));
+    work->pixels = s_full.pixels;
+    work->width = s_full.width;
+    work->height = s_full.height;
+    work->bpp = s_full.bpp;
+    work->rowbytes = s_full.rowbytes;
+    work->target_width = new_width;
+    work->target_height = new_height;
+    work->quality = cl_ac_screenshot_quality->integer;
+    work->jpeg_buf = NULL;
+    work->jpeg_size = 0;
+    work->out_width = 0;
+    work->out_height = 0;
+    work->status = 0;
 
-    // Compress to JPEG
-    ret = IMG_CompressJPEG(&s_small, &jpeg_buf, &jpeg_size, cl_ac_screenshot_quality->integer);
-    if (ret < 0) {
-        Com_EPrintf("AC Screenshot: Failed to compress JPEG: %s\n", Q_ErrorString(ret));
-        Z_Free(s_small.pixels);
-        Z_Free(s_full.pixels);
-        return;
-    }
+    // Queue async work
+    async.work_cb = cl_ac_screenshot_work_cb;
+    async.done_cb = cl_ac_screenshot_done_cb;
+    async.cb_arg = work;
 
-    // Check size fits in message (MAX_MSGLEN = 32KB, reserve some for header)
-    if (jpeg_size > 32000) {
-        Com_EPrintf("AC Screenshot: JPEG too large (%zu bytes), skipping\n", jpeg_size);
-        Z_Free(jpeg_buf);
-        Z_Free(s_small.pixels);
-        Z_Free(s_full.pixels);
-        return;
-    }
+    cl_ac_screenshot_pending = true;
+    Com_QueueAsyncWork(&async);
 
-    // Send to server via netchan
-    MSG_WriteByte(clc_screenshot);
-    MSG_WriteShort(s_small.width);
-    MSG_WriteShort(s_small.height);
-    MSG_WriteLong((int)jpeg_size);
-    MSG_WriteData(jpeg_buf, jpeg_size);
-    Netchan_Transmit(&cls.netchan, msg_write.cursize, msg_write.data, 3);
-    SZ_Clear(&msg_write);
-
-    // Reset command history to discard usercmds accumulated during
-    // blocking screenshot capture/compress (prevents MAX_PACKET_USERCMDS warning)
-    for (int i = 0; i < CMD_BACKUP; i++) {
-        cl.history[i].cmdNumber = cl.cmdNumber;
-    }
-
-    // Reset ALL transmit state to prevent MAX_PACKET_USERCMDS accumulation.
-    // The screenshot blocks the main thread, during which outgoing_sequence
-    // gets incremented by Netchan_Transmit but usercmds keep piling up.
-    cl.lastTransmitTime = 0;
-    cl.lastTransmitCmdNumber = cl.cmdNumber;
-    cl.lastTransmitCmdNumberReal = cl.cmdNumber;
-
-    Com_DPrintf("AC Screenshot: Sent %dx%d JPEG (%zu bytes)\n",
-                s_small.width, s_small.height, jpeg_size);
-
-    // Cleanup
-    Z_Free(jpeg_buf);
-    Z_Free(s_small.pixels);
-    Z_Free(s_full.pixels);
+    Com_DPrintf("AC Screenshot: Queued async capture %dx%d -> %dx%d\n",
+                s_full.width, s_full.height, new_width, new_height);
 }
 
 /*
@@ -155,6 +263,8 @@ void CL_AC_Run(void)
     if (!cl_ac_screenshot_enabled->integer)
         return;
     if (cls.state < ca_active)
+        return;
+    if (cl_ac_screenshot_pending)
         return;
     if (cls.realtime - cl_ac_screenshot_last < (unsigned)(cl_ac_screenshot_interval->integer * 1000))
         return;

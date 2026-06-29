@@ -130,6 +130,29 @@ void SV_ScreenshotList_f(void)
 
 /*
 ===============
+SV_ScreenshotAll_f
+
+Console command: sv_screenshotall
+Request a screenshot from all connected players
+===============
+*/
+void SV_ScreenshotAll_f(void)
+{
+    client_t *cl;
+    int count = 0;
+
+    FOR_EACH_CLIENT(cl) {
+        if (cl->state < cs_spawned)
+            continue;
+        SV_ClientCommand(cl, "screenshot_ac\n");
+        count++;
+    }
+
+    Com_Printf("Screenshot requested from all %d players\n", count);
+}
+
+/*
+===============
 SV_ParseACData
 
 Parse incoming clc_acdata message from client (file hashes + cvar values)

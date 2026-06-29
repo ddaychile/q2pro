@@ -738,6 +738,7 @@ cvarban_t *SV_CheckInfoBans(const char *info, bool match_only);
 void SV_ParseScreenshot(void);
 void SV_Screenshot_f(void);
 void SV_ScreenshotList_f(void);
+void SV_ScreenshotAll_f(void);
 void SV_ParseACData(void);
 
 #if USE_AC_SERVER
