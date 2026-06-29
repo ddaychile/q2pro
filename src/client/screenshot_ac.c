@@ -125,11 +125,12 @@ void CL_AC_SendScreenshot(void)
         cl.history[i].cmdNumber = cl.cmdNumber;
     }
 
-    // Force immediate send on next CL_SendBatchedCmd call.
-    // The screenshot blocked for a long time but cls.realtime did not
-    // advance during the block, so ready_to_send() would keep returning
-    // false and usercmds would accumulate past MAX_PACKET_USERCMDS.
+    // Reset ALL transmit state to prevent MAX_PACKET_USERCMDS accumulation.
+    // The screenshot blocks the main thread, during which outgoing_sequence
+    // gets incremented by Netchan_Transmit but usercmds keep piling up.
     cl.lastTransmitTime = 0;
+    cl.lastTransmitCmdNumber = cl.cmdNumber;
+    cl.lastTransmitCmdNumberReal = cl.cmdNumber;
 
     Com_DPrintf("AC Screenshot: Sent %dx%d JPEG (%zu bytes)\n",
                 s_small.width, s_small.height, jpeg_size);
