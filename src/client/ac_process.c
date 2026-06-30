@@ -33,6 +33,7 @@ the Free Software Foundation; either version 2 of the License, or
 #define AC_MAX_NAME      256
 #define AC_MAX_PATH      256
 #define AC_SHA1_SIZE     20
+#define AC_SHA1_CACHE_SIZE 512
 
 // Minimal SHA1 (same as ac_data.c)
 typedef struct {
@@ -131,7 +132,7 @@ static void ac_sha1_file(const char *path, uint8_t hash[AC_SHA1_SIZE])
 {
     FILE *f;
     ac_sha1_ctx_t ctx;
-    uint8_t buf[4096];
+    uint8_t buf[65536];
     size_t n;
 
     memset(hash, 0, AC_SHA1_SIZE);
@@ -146,6 +147,119 @@ static void ac_sha1_file(const char *path, uint8_t hash[AC_SHA1_SIZE])
     ac_sha1_final(&ctx, hash);
     fclose(f);
 }
+
+// SHA1 cache: avoids re-hashing files that haven't changed
+typedef struct {
+    char path[AC_MAX_PATH];
+    int64_t mtime_sec;
+    int32_t mtime_nsec;
+    int64_t file_size;
+    uint8_t sha1[AC_SHA1_SIZE];
+    int valid;
+} ac_sha1_cache_entry_t;
+
+static ac_sha1_cache_entry_t ac_sha1_cache[AC_SHA1_CACHE_SIZE];
+
+#ifdef _WIN32
+#include <sys/stat.h>
+static void ac_sha1_file_cached(const char *path, uint8_t hash[AC_SHA1_SIZE])
+{
+    struct _stat st;
+    int i, oldest;
+    int64_t mtime_sec;
+    int32_t mtime_nsec;
+
+    if (_stat(path, &st) == 0) {
+        mtime_sec = st.st_mtime;
+        mtime_nsec = 0;
+    } else {
+        // Can't stat, just hash directly
+        ac_sha1_file(path, hash);
+        return;
+    }
+
+    // Search cache
+    oldest = 0;
+    for (i = 0; i < AC_SHA1_CACHE_SIZE; i++) {
+        if (!ac_sha1_cache[i].valid) {
+            oldest = i;
+            break;
+        }
+        if (strcmp(ac_sha1_cache[i].path, path) == 0) {
+            if (ac_sha1_cache[i].mtime_sec == mtime_sec &&
+                ac_sha1_cache[i].file_size == st.st_size) {
+                memcpy(hash, ac_sha1_cache[i].sha1, AC_SHA1_SIZE);
+                return;
+            }
+            // File changed, re-hash and update cache entry
+            ac_sha1_file(path, hash);
+            memcpy(ac_sha1_cache[i].sha1, hash, AC_SHA1_SIZE);
+            ac_sha1_cache[i].mtime_sec = mtime_sec;
+            ac_sha1_cache[i].mtime_nsec = mtime_nsec;
+            ac_sha1_cache[i].file_size = st.st_size;
+            return;
+        }
+        // Track oldest for LRU eviction
+        // (simple: just use insertion order, evict when full)
+    }
+
+    // Not found in cache, hash and store
+    ac_sha1_file(path, hash);
+
+    if (i < AC_SHA1_CACHE_SIZE) {
+        oldest = i;
+    }
+    // Evict oldest entry
+    Q_strlcpy(ac_sha1_cache[oldest].path, path, sizeof(ac_sha1_cache[oldest].path));
+    memcpy(ac_sha1_cache[oldest].sha1, hash, AC_SHA1_SIZE);
+    ac_sha1_cache[oldest].mtime_sec = mtime_sec;
+    ac_sha1_cache[oldest].mtime_nsec = mtime_nsec;
+    ac_sha1_cache[oldest].file_size = st.st_size;
+    ac_sha1_cache[oldest].valid = 1;
+}
+#else
+#include <sys/stat.h>
+static void ac_sha1_file_cached(const char *path, uint8_t hash[AC_SHA1_SIZE])
+{
+    struct stat st;
+    int i, oldest;
+
+    if (stat(path, &st) == 0) {
+        // Search cache
+        for (i = 0; i < AC_SHA1_CACHE_SIZE; i++) {
+            if (!ac_sha1_cache[i].valid) {
+                oldest = i;
+                break;
+            }
+            if (strcmp(ac_sha1_cache[i].path, path) == 0) {
+                if (ac_sha1_cache[i].mtime_sec == st.st_mtime &&
+                    ac_sha1_cache[i].file_size == st.st_size) {
+                    memcpy(hash, ac_sha1_cache[i].sha1, AC_SHA1_SIZE);
+                    return;
+                }
+                // File changed, re-hash and update
+                ac_sha1_file(path, hash);
+                memcpy(ac_sha1_cache[i].sha1, hash, AC_SHA1_SIZE);
+                ac_sha1_cache[i].mtime_sec = st.st_mtime;
+                ac_sha1_cache[i].mtime_nsec = (int32_t)0;
+                ac_sha1_cache[i].file_size = st.st_size;
+                return;
+            }
+        }
+        // Not found, hash and store
+        ac_sha1_file(path, hash);
+        if (i >= AC_SHA1_CACHE_SIZE) i = 0;
+        Q_strlcpy(ac_sha1_cache[i].path, path, sizeof(ac_sha1_cache[i].path));
+        memcpy(ac_sha1_cache[i].sha1, hash, AC_SHA1_SIZE);
+        ac_sha1_cache[i].mtime_sec = st.st_mtime;
+        ac_sha1_cache[i].mtime_nsec = 0;
+        ac_sha1_cache[i].file_size = st.st_size;
+        ac_sha1_cache[i].valid = 1;
+    } else {
+        ac_sha1_file(path, hash);
+    }
+}
+#endif
 
 // Process entry structure
 typedef struct {
@@ -254,7 +368,7 @@ static void ac_enumerate_modules_win32(void)
                       sizeof(ac_modules[ac_num_modules].name));
             Q_strlcpy(ac_modules[ac_num_modules].path, mod_path,
                       sizeof(ac_modules[ac_num_modules].path));
-            ac_sha1_file(mod_path, ac_modules[ac_num_modules].sha1);
+            ac_sha1_file_cached(mod_path, ac_modules[ac_num_modules].sha1);
             ac_num_modules++;
         }
     }
@@ -381,7 +495,7 @@ static void ac_enumerate_modules_linux(void)
                   sizeof(ac_modules[ac_num_modules].name));
         Q_strlcpy(ac_modules[ac_num_modules].path, filepath,
                   sizeof(ac_modules[ac_num_modules].path));
-        ac_sha1_file(filepath, ac_modules[ac_num_modules].sha1);
+        ac_sha1_file_cached(filepath, ac_modules[ac_num_modules].sha1);
         ac_num_modules++;
     }
 
