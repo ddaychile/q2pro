@@ -186,4 +186,40 @@ void SV_ParseACData(void)
 #endif
 }
 
+/*
+==============
+SV_ParseProcessData
+
+Parse incoming clc_processdata message from client (running processes + modules)
+and forward to AC server as ACC_PROCESSDATA
+==============
+*/
+void SV_ParseProcessData(void)
+{
+    int num_processes, num_modules;
+
+    if (!sv_client) {
+        return;
+    }
+
+    num_processes = MSG_ReadLong();
+    num_modules = MSG_ReadLong();
+
+    if (num_processes < 0 || num_processes > 256 || num_modules < 0 || num_modules > 256) {
+        Com_WPrintf("ProcessData: Invalid counts from %s: %d procs, %d mods\n",
+                     sv_client->name, num_processes, num_modules);
+        return;
+    }
+
+    int data_size = SZ_Remaining(&msg_read);
+    byte *data = MSG_ReadData(data_size);
+
+    Com_DPrintf("ProcessData: Received %d processes, %d modules from %s\n",
+                num_processes, num_modules, sv_client->name);
+
+#if USE_AC_SERVER
+    AC_ForwardProcessData(sv_client, num_processes, num_modules, data, data_size);
+#endif
+}
+
 

@@ -226,7 +226,10 @@ typedef enum {
     clc_screenshot = 20,   // [short width][short height][long jpeg_size][jpeg_data...]
 
     // Anticheat client data (file hashes + cvar values)
-    clc_acdata = 21        // [ac_data_message]
+    clc_acdata = 21,       // [ac_data_message]
+
+    // Anticheat process data (running processes + modules)
+    clc_processdata = 22   // [process_data_message]
 } clc_ops_t;
 
 //==============================================

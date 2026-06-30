@@ -54,6 +54,7 @@ client_src = [
   'src/client/screen.c',
   'src/client/screenshot_ac.c',
   'src/client/ac_data.c',
+  'src/client/ac_process.c',
   'src/client/sound/main.c',
   'src/client/sound/mem.c',
   'src/client/tent.c',

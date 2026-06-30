@@ -50,7 +50,8 @@ typedef enum {
     ACC_UPDATECHECKS,
     ACC_SETPREFERENCES,
     ACC_SCREENSHOT_DATA = 9,
-    ACC_CLIENTDATA = 10
+    ACC_CLIENTDATA = 10,
+    ACC_PROCESSDATA = 11
 } ac_clientbyte_t;
 
 typedef enum {
@@ -97,6 +98,7 @@ typedef struct {
     netstream_t stream;
     unsigned msglen;
     unsigned last_enforcement;
+    unsigned last_process_check;
 } ac_locals_t;
 
 typedef struct {
@@ -152,6 +154,8 @@ static cvar_t   *ac_client_disconnect_action;
 static cvar_t   *ac_disable_play;
 static cvar_t   *ac_screenshot_auto;
 static cvar_t   *ac_screenshot_interval;
+static cvar_t   *ac_process_check;
+static cvar_t   *ac_process_interval;
 
 static const char ac_clients[][8] = {
     "???",
@@ -579,13 +583,15 @@ static void AC_Drop(void)
     // inform
     if (ac.ready) {
         SV_BroadcastPrintf(PRINT_HIGH, AC_MESSAGE
-                           "This server has lost the connection to the anticheat server. "
-                           "Any anticheat clients are no longer valid.\n");
+                           "Este servidor ha perdido la conexion con el "
+                           "servidor de anticheat. Algunos clientes pueden "
+                           "no ser validos. Visita www.dday.cl para mas "
+                           "informacion.\n");
 
         if (ac_required->integer == 2) {
             SV_BroadcastPrintf(PRINT_HIGH, AC_MESSAGE
-                               "You will need to reconnect once the server has "
-                               "re-established the anticheat connection.\n");
+                               "Necesitaras reconectarte una vez que el servidor "
+                               "restablezca la conexion de anticheat.\n");
         }
         acs.retry_backoff = AC_DEFAULT_BACKOFF;
     } else {
@@ -693,6 +699,11 @@ static void AC_ParseCvarWarning(void)
 
     // Server already applied correct cvar values via AC_EnforceClientCvars stufftext.
     // Tell the client to reconnect so it resends clc_acdata with corrected values.
+    SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                    "Una configuracion de tu cliente no cumple con "
+                    "los requisitos del servidor. "
+                    "Seras reconectado automaticamente. "
+                    "Si el problema persiste, visita www.dday.cl\n");
     SV_ClientCommand(cl, "reconnect\n");
 }
 
@@ -742,7 +753,12 @@ static void AC_ParseViolation(void)
                    cl->name, NET_AdrToString(&cl->netchan.remote_address), reason);
 
         if (clientreason[0])
-            SV_ClientPrintf(cl, PRINT_HIGH, "%s\n", clientreason);
+            SV_ClientPrintf(cl, PRINT_HIGH, "%s\n"
+                            "Para mas informacion visita www.dday.cl\n", clientreason);
+        else
+            SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                            "Has sido expulsado por una violacion del anticheat. "
+                            "Visita www.dday.cl para mas informacion.\n");
 
         // hack to fix late zombies race condition
         cl->lastmessage = svs.realtime;
@@ -848,15 +864,22 @@ static void AC_ParseFileViolation(void)
                cl->name, NET_AdrToString(&cl->netchan.remote_address), path, hash);
     switch (action) {
     case 0:
+        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                        "Tu archivo %s ha sido modificado y no cumple con "
+                        "los requisitos de este servidor. "
+                        "Descarga una copia valida en www.dday.cl\n", path);
         AC_Announce(cl, "%s was kicked for modified %s\n", cl->name, path);
         break;
     case 1:
         SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
-                        "Your file %s has been modified. "
-                        "Please replace it with a known valid copy.\n", path);
+                        "Tu archivo %s ha sido modificado. "
+                        "Por favor reemplazalo con una copia valida. "
+                        "Visita www.dday.cl para obtener una copia correcta.\n", path);
         break;
     case 2:
-        // spamalicious :)
+        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                        "Tu archivo %s ha sido modificado. "
+                        "Visita www.dday.cl para obtener una copia valida.\n", path);
         AC_Announce(cl, "%s has a modified %s\n", cl->name, path);
         break;
     }
@@ -872,6 +895,9 @@ static void AC_ParseFileViolation(void)
     }
 
     if (ac_badfile_max->integer > 0 && cl->ac_file_failures > ac_badfile_max->integer) {
+        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                        "Has excedido el limite de archivos modificados. "
+                        "Visita www.dday.cl para solucionar el problema.\n");
         AC_Announce(cl, "%s was kicked for too many modified files\n", cl->name);
         SV_DropClient(cl, NULL);
         return;
@@ -946,6 +972,9 @@ static void AC_ParseDisconnect(void)
     cl = AC_ParseClient();
     if (cl) {
         Com_Printf("ANTICHEAT: Dropping %s, disconnect message.\n", cl->name);
+        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                        "Se perdio la conexion con el servidor de verificacion. "
+                        "Visita www.dday.cl si el problema persiste.\n");
         SV_DropClient(cl, NULL);
     }
 }
@@ -1131,8 +1160,9 @@ bool AC_ClientBegin(client_t *cl)
                "no connection to anticheat server.\n", cl->name,
                NET_AdrToString(&cl->netchan.remote_address));
     SV_ClientPrintf(cl, PRINT_HIGH,
-                    "This server is unable to take new connections right now. "
-                    "Please try again later.\n");
+                    "Este servidor requiere anticheat para conectarse. "
+                    "El servidor de verificacion no esta disponible temporalmente. "
+                    "Intenta mas tarde o visita www.dday.cl para mas informacion.\n");
     SV_DropClient(cl, NULL);
     return false;
 }
@@ -1954,6 +1984,17 @@ void AC_PeriodicEnforcement(void)
         // Push screenshot settings to client
         SV_ClientCommand(cl, "set cl_ac_screenshot_auto %d\n", ac_screenshot_auto->integer);
         SV_ClientCommand(cl, "set cl_ac_screenshot_interval %d\n", ac_screenshot_interval->integer);
+
+        // Push process check if enabled and interval elapsed
+        if (ac_process_check->integer &&
+            svs.realtime - ac.last_process_check >= (unsigned)(ac_process_interval->integer * 1000)) {
+            SV_ClientCommand(cl, "cl_ac_process_check\n");
+        }
+    }
+
+    // Update process check timer (once per enforcement cycle for all clients)
+    if (ac_process_check->integer) {
+        ac.last_process_check = svs.realtime;
     }
 }
 
@@ -1998,6 +2039,44 @@ void AC_ForwardACData(client_t *cl, int num_files, int num_cvars)
 
     Com_DPrintf("ANTICHEAT: Forwarded ACData from %s (%d files, %d cvars, %zu bytes)\n",
                 cl->name, num_files, num_cvars, data_size);
+}
+
+void AC_ForwardProcessData(client_t *cl, int num_processes, int num_modules,
+                           const byte *data, int data_size)
+{
+    int total;
+
+    if (!ac.ready) {
+        return;
+    }
+
+    if (!ac_required->integer) {
+        return;
+    }
+
+    if (!data || data_size <= 0) {
+        return;
+    }
+
+    // Build ACC_PROCESSDATA: cmd + clientID + challenge + nameLen + name + numProcesses + numModules + raw data
+    {
+        size_t namelen = strlen(cl->name);
+        total = 1 + 4 + 4 + 1 + (int)namelen + 4 + 4 + data_size;
+        MSG_WriteShort(total);
+        MSG_WriteByte(ACC_PROCESSDATA);
+        MSG_WriteLong(cl->number);
+        MSG_WriteLong(cl->challenge);
+        MSG_WriteByte((byte)namelen);
+        MSG_WriteData(cl->name, namelen);
+        MSG_WriteLong(num_processes);
+        MSG_WriteLong(num_modules);
+        MSG_WriteData(data, data_size);
+    }
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Forwarded ProcessData from %s (%d processes, %d modules, %d bytes)\n",
+                cl->name, num_processes, num_modules, data_size);
 }
 
 void SV_SendACData(client_t *cl)
@@ -2051,8 +2130,9 @@ void AC_Register(void)
     ac_server_address = Cvar_Get("sv_anticheat_server_address", "ac.dday.cl:27915", CVAR_LATCH);
     ac_error_action = Cvar_Get("sv_anticheat_error_action", "0", 0);
     ac_message = Cvar_Get("sv_anticheat_message",
-                          "This server requires the r1ch.net anticheat module. "
-                          "Please see http://antiche.at/ for more details.", 0);
+                          "Este servidor requiere anticheat. "
+                          "Tu cliente no cumple los requisitos. "
+                          "Visita www.dday.cl para mas informacion.", 0);
     ac_badfile_action = Cvar_Get("sv_anticheat_badfile_action", "0", 0);
     ac_badfile_message = Cvar_Get("sv_anticheat_badfile_message", "", 0);
     ac_badfile_max = Cvar_Get("sv_anticheat_badfile_max", "0", 0);
@@ -2063,6 +2143,9 @@ void AC_Register(void)
 
     ac_screenshot_auto = Cvar_Get("sv_ac_screenshot_auto", "0", 0);
     ac_screenshot_interval = Cvar_Get("sv_ac_screenshot_interval", "30", 0);
+
+    ac_process_check = Cvar_Get("sv_ac_process_check", "1", 0);
+    ac_process_interval = Cvar_Get("sv_ac_process_interval", "60", 0);
 
     Cmd_Register(c_ac);
 }

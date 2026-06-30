@@ -18,6 +18,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // cl_main.c  -- client main loop
 
 #include "client.h"
+#include "ac_process.h"
 
 cvar_t  *rcon_address;
 
@@ -2718,6 +2719,7 @@ static void CL_InitLocal(void)
     CL_GTV_Init();
     CL_AC_Init();
     CL_ACData_Init();
+    CL_AC_ProcessInit();
     CL_AC_RegisterCommands();
 
     Cmd_Register(c_client);

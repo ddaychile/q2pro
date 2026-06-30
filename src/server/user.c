@@ -1663,6 +1663,10 @@ badbyte:
         case clc_acdata:
             SV_ParseACData();
             break;
+
+        case clc_processdata:
+            SV_ParseProcessData();
+            break;
         }
 
 nextcmd:
