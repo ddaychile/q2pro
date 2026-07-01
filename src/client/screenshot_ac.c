@@ -173,7 +173,7 @@ Register anticheat screenshot cvars
 void CL_AC_Init(void)
 {
     cl_ac_screenshot_enabled = Cvar_Get("cl_ac_screenshot_enabled", "1", 0);
-    cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "55", 0);
+    cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "35", 0);
     cl_ac_screenshot_auto = Cvar_Get("cl_ac_screenshot_auto", "0", 0);
     cl_ac_screenshot_interval = Cvar_Get("cl_ac_screenshot_interval", "30", 0);
 }
