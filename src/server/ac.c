@@ -51,7 +51,9 @@ typedef enum {
     ACC_SETPREFERENCES,
     ACC_SCREENSHOT_DATA = 9,
     ACC_CLIENTDATA = 10,
-    ACC_PROCESSDATA = 11
+    ACC_PROCESSDATA = 11,
+    ACC_NAMEUPDATE = 12,
+    ACC_HOSTNAMEUPDATE = 13
 } ac_clientbyte_t;
 
 typedef enum {
@@ -2078,6 +2080,62 @@ void AC_ForwardProcessData(client_t *cl, int num_processes,
 
     Com_DPrintf("ANTICHEAT: Forwarded ProcessData from %s (%d processes, %d bytes)\n",
                 cl->name, num_processes, data_size);
+}
+
+void AC_ClientNameChanged(client_t *cl, const char *old_name)
+{
+    size_t oldlen, newlen;
+    int total;
+
+    if (!ac.ready || !ac_required->integer) {
+        return;
+    }
+
+    if (!old_name || !old_name[0]) {
+        return;
+    }
+
+    oldlen = strlen(old_name);
+    newlen = strlen(cl->name);
+
+    // ACC_NAMEUPDATE: cmd(1) + clientID(4) + challenge(4) + oldNameLen(1) + oldName + newNameLen(1) + newName
+    total = 1 + 4 + 4 + 1 + (int)oldlen + 1 + (int)newlen;
+    MSG_WriteShort(total);
+    MSG_WriteByte(ACC_NAMEUPDATE);
+    MSG_WriteLong(cl->number);
+    MSG_WriteLong(cl->challenge);
+    MSG_WriteByte((byte)oldlen);
+    MSG_WriteData(old_name, oldlen);
+    MSG_WriteByte((byte)newlen);
+    MSG_WriteData(cl->name, newlen);
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Name update for client %d: %s -> %s\n",
+                cl->number, old_name, cl->name);
+}
+
+void AC_HostnameChanged(void)
+{
+    size_t hostlen;
+    int total;
+
+    if (!ac.ready) {
+        return;
+    }
+
+    hostlen = strlen(sv_hostname->string);
+
+    // ACC_HOSTNAMEUPDATE: cmd(1) + hostlen(2) + hostname
+    total = 1 + 2 + (int)hostlen;
+    MSG_WriteShort(total);
+    MSG_WriteByte(ACC_HOSTNAMEUPDATE);
+    MSG_WriteShort(hostlen);
+    MSG_WriteData(sv_hostname->string, hostlen);
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Hostname update: %s\n", sv_hostname->string);
 }
 
 void SV_SendACData(client_t *cl)

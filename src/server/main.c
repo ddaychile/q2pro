@@ -2047,6 +2047,7 @@ void SV_UserinfoChanged(client_t *cl)
                                cl->name, name);
         }
     }
+    AC_ClientNameChanged(cl, cl->name);
     memcpy(cl->name, name, len + 1);
 
     // rate command
@@ -2143,6 +2144,7 @@ static void sv_namechange_limit_changed(cvar_t *self)
 static void sv_hostname_changed(cvar_t *self)
 {
     SV_SetConsoleTitle();
+    AC_HostnameChanged();
 }
 #endif
 

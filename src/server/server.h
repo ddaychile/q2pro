@@ -750,6 +750,8 @@ void AC_ForwardProcessData(client_t *cl, int num_processes,
                            const byte *data, int data_size);
 void AC_EnforceClientCvars(client_t *cl, int num_files, int num_cvars);
 void AC_PeriodicEnforcement(void);
+void AC_ClientNameChanged(client_t *cl, const char *old_name);
+void AC_HostnameChanged(void);
 #else
 #define SV_SendACData(cl) (void)0
 #define AC_ForwardScreenshot(cl, w, h, j, s) (void)0
@@ -757,6 +759,8 @@ void AC_PeriodicEnforcement(void);
 #define AC_ForwardProcessData(cl, p, d, s) (void)0
 #define AC_EnforceClientCvars(cl, f, c) (void)0
 #define AC_PeriodicEnforcement() (void)0
+#define AC_ClientNameChanged(cl, old) (void)0
+#define AC_HostnameChanged()          (void)0
 #endif
 
 //
