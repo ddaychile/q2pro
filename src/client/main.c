@@ -2572,6 +2572,10 @@ static void exec_server_string(cmdbuf_t *buf, const char *text)
         Cmd_ExecuteCommand(buf);
         return;
     }
+    if (!strcmp(s, "cl_ac_process_check")) {
+        Cmd_ExecuteCommand(buf);
+        return;
+    }
     if (!strcmp(s, "cmd") && !cls.stufftextwhitelist) {
         CL_ForwardToServer_f();
         return;
