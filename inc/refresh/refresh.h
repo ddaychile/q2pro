@@ -262,4 +262,5 @@ struct screenshot_s {
 int     IMG_ReadPixels(screenshot_t *s);
 int     IMG_CompressJPEG(const screenshot_t *s, byte **out, size_t *out_size, int quality);
 int     IMG_CompressJPEG_AC(const screenshot_t *s, byte **out, size_t *out_size, int quality);
+int     IMG_CompressWebP_AC(const screenshot_t *s, byte **out, size_t *out_size, int quality);
 int     IMG_Downscale(screenshot_t *dst, const screenshot_t *src, int new_width, int new_height);

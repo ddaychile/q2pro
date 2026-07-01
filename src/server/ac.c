@@ -1817,7 +1817,7 @@ static void ac_disable_play_changed(cvar_t *self)
     }
 }
 
-void AC_ForwardScreenshot(client_t *cl, int width, int height, const byte *jpeg, int jpeg_size)
+void AC_ForwardScreenshot(client_t *cl, int width, int height, int format, const byte *image_data, int image_size)
 {
     if (!ac.ready) {
         return; // not connected to anticheat server
@@ -1828,20 +1828,21 @@ void AC_ForwardScreenshot(client_t *cl, int width, int height, const byte *jpeg,
     }
 
     // Build ACC_SCREENSHOT_DATA message
-    // Format: [uint8 cmd=9][uint32 client_id][uint32 challenge][uint16 width][uint16 height][uint32 jpeg_size][jpeg_data...]
-    MSG_WriteShort(1 + 4 + 4 + 2 + 2 + 4 + jpeg_size); // total payload length
+    // Format: [uint8 cmd=9][uint32 client_id][uint32 challenge][uint16 width][uint16 height][uint8 format][uint32 image_size][image_data...]
+    MSG_WriteShort(1 + 4 + 4 + 2 + 2 + 1 + 4 + image_size); // total payload length
     MSG_WriteByte(ACC_SCREENSHOT_DATA);
     MSG_WriteLong(cl->number);
     MSG_WriteLong(cl->challenge);
     MSG_WriteShort(width);
     MSG_WriteShort(height);
-    MSG_WriteLong(jpeg_size);
-    MSG_WriteData(jpeg, jpeg_size);
+    MSG_WriteByte(format);
+    MSG_WriteLong(image_size);
+    MSG_WriteData(image_data, image_size);
 
     AC_Write(__func__);
 
-    Com_DPrintf("ANTICHEAT: Forwarded screenshot from %s (%dx%d, %d bytes)\n",
-                cl->name, width, height, jpeg_size);
+    Com_DPrintf("ANTICHEAT: Forwarded screenshot from %s (%dx%d format=%d, %d bytes)\n",
+                cl->name, width, height, format, image_size);
 }
 
 /*

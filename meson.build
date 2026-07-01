@@ -325,6 +325,16 @@ if jpeg.found()
   endif
 endif
 
+webp = dependency('libwebp',
+  required:        get_option('libwebp'),
+  default_options: fallback_opt,
+  fallback:        ['libwebp', 'libwebp'],
+)
+if webp.found()
+  client_deps += webp
+  config.set10('USE_WEBP', true)
+endif
+
 if get_option('tga')
   texture_formats += 'tga'
 endif

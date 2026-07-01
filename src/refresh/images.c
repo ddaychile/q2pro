@@ -42,6 +42,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <jpeglib.h>
 #endif
 
+#if USE_WEBP
+#include <webp/encode.h>
+#endif
+
 #include <setjmp.h>
 
 #define R_COLORMAP_PCX    "pics/colormap.pcx"
@@ -2373,6 +2377,47 @@ int IMG_CompressJPEG_AC(const screenshot_t *s, byte **out, size_t *out_size, int
     *out_size = outsize;
 
     free(outbuf);
+    return Q_ERR_SUCCESS;
+}
+#endif
+
+/*
+===============
+IMG_CompressWebP_AC
+
+Compress screenshot to WebP format for anticheat transmission.
+Uses libwebp's simple encoding API. Intended to be called from async worker thread.
+===============
+*/
+#if USE_WEBP
+int IMG_CompressWebP_AC(const screenshot_t *s, byte **out, size_t *out_size, int quality)
+{
+    uint8_t *outbuf = NULL;
+    size_t outsize;
+
+    if (!s || !s->pixels || !out || !out_size)
+        return Q_ERR(EINVAL);
+
+    if (s->bpp == 4)
+        outsize = WebPEncodeRGBA(s->pixels, s->width, s->height, s->rowbytes, (float)quality, &outbuf);
+    else
+        outsize = WebPEncodeRGB(s->pixels, s->width, s->height, s->rowbytes, (float)quality, &outbuf);
+
+    if (outsize == 0) {
+        if (outbuf)
+            WebPFree(outbuf);
+        return Q_ERR_LIBRARY_ERROR;
+    }
+
+    *out = Z_Malloc(outsize);
+    if (!*out) {
+        WebPFree(outbuf);
+        return Q_ERR(ENOMEM);
+    }
+    memcpy(*out, outbuf, outsize);
+    *out_size = outsize;
+
+    WebPFree(outbuf);
     return Q_ERR_SUCCESS;
 }
 #endif

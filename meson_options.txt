@@ -74,6 +74,11 @@ option('libpng',
   value: 'auto',
   description: 'libpng support')
 
+option('libwebp',
+  type: 'feature',
+  value: 'auto',
+  description: 'libwebp support')
+
 option('md3',
   type: 'boolean',
   value: true,

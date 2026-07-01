@@ -18,26 +18,29 @@ the Free Software Foundation; either version 2 of the License, or
 SV_ParseScreenshot
 
 Parse incoming clc_screenshot message from client and forward to AC server
-Protocol: [clc_screenshot][short width][short height][long jpeg_size][jpeg_data...]
+Protocol: [clc_screenshot][byte format][short width][short height][long image_size][image_data...]
 ===============
 */
 void SV_ParseScreenshot(void)
 {
-    int width, height, jpeg_size;
-    byte *jpeg_data;
+    int format, width, height, image_size;
+    byte *image_data;
 
     if (!sv_client) {
         return;
     }
 
+    // Read format byte (0=jpeg, 1=webp)
+    format = MSG_ReadByte();
+
     // Read dimensions
     width = MSG_ReadShort();
     height = MSG_ReadShort();
-    jpeg_size = MSG_ReadLong();
+    image_size = MSG_ReadLong();
 
     // Validate size
-    if (jpeg_size < 100 || jpeg_size > 32000) {
-        Com_WPrintf("Screenshot: Invalid size %d from %s\n", jpeg_size, sv_client->name);
+    if (image_size < 100 || image_size > 32000) {
+        Com_WPrintf("Screenshot: Invalid size %d from %s\n", image_size, sv_client->name);
         SV_DropClient(sv_client, "invalid screenshot size");
         return;
     }
@@ -48,19 +51,19 @@ void SV_ParseScreenshot(void)
         return;
     }
 
-    // Read JPEG data (MSG_ReadData returns pointer to read buffer)
-    jpeg_data = MSG_ReadData(jpeg_size);
-    if (!jpeg_data) {
+    // Read image data (MSG_ReadData returns pointer to read buffer)
+    image_data = MSG_ReadData(image_size);
+    if (!image_data) {
         Com_WPrintf("Screenshot: Failed to read data from %s\n", sv_client->name);
         return;
     }
 
-    Com_DPrintf("Screenshot: Received %dx%d (%d bytes) from %s\n",
-                width, height, jpeg_size, sv_client->name);
+    Com_DPrintf("Screenshot: Received %dx%d format=%d (%d bytes) from %s\n",
+                width, height, format, image_size, sv_client->name);
 
 #if USE_AC_SERVER
     // Forward to anticheat server if connected
-    AC_ForwardScreenshot(sv_client, width, height, jpeg_data, jpeg_size);
+    AC_ForwardScreenshot(sv_client, width, height, format, image_data, image_size);
 #endif
 }
 

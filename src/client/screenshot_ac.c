@@ -18,9 +18,17 @@ the Free Software Foundation; either version 2 of the License, or
 // Cvars
 static cvar_t *cl_ac_screenshot_enabled;
 static cvar_t *cl_ac_screenshot_quality;
-static cvar_t *cl_ac_screenshot_scale;
 static cvar_t *cl_ac_screenshot_auto;
 static cvar_t *cl_ac_screenshot_interval;
+
+// Screenshot format constants
+#define AC_SCREENSHOT_FMT_WEBP  1
+
+// Maximum dimensions for WebP (fits comfortably in 32KB)
+#define AC_SCREENSHOT_MAX_WIDTH  640
+#define AC_SCREENSHOT_MAX_HEIGHT 480
+#define AC_SCREENSHOT_MIN_WIDTH  320
+#define AC_SCREENSHOT_MIN_HEIGHT 240
 
 // State
 static unsigned cl_ac_screenshot_last;
@@ -42,8 +50,8 @@ typedef struct {
     int     target_width, target_height;
     int     quality;
     // output from worker thread
-    byte   *jpeg_buf;
-    size_t  jpeg_size;
+    byte   *image_buf;
+    size_t  image_size;
     int     out_width, out_height;
     int     status;     // 0 = ok, <0 = error
 } ac_screenshot_work_t;
@@ -52,7 +60,7 @@ typedef struct {
 ===============
 cl_ac_screenshot_work_cb
 
-Worker thread: downscale pixels and compress to JPEG.
+Worker thread: downscale pixels and compress to WebP.
 All CPU-heavy work happens here, never touches GL context.
 ===============
 */
@@ -84,8 +92,8 @@ static void cl_ac_screenshot_work_cb(void *arg)
     Z_Free(work->pixels);
     work->pixels = NULL;
 
-    // Compress to JPEG with optimized settings
-    ret = IMG_CompressJPEG_AC(&s_small, &work->jpeg_buf, &work->jpeg_size, work->quality);
+    // Compress to WebP
+    ret = IMG_CompressWebP_AC(&s_small, &work->image_buf, &work->image_size, work->quality);
     if (ret < 0) {
         Z_Free(s_small.pixels);
         work->status = ret;
@@ -103,7 +111,7 @@ static void cl_ac_screenshot_work_cb(void *arg)
 ===============
 cl_ac_screenshot_done_cb
 
-Main thread callback: send the compressed JPEG via netchan.
+Main thread callback: send the compressed WebP via netchan.
 Called from Com_CompleteAsyncWork on the next frame.
 ===============
 */
@@ -113,7 +121,7 @@ static void cl_ac_screenshot_done_cb(void *arg)
 
     if (work->status < 0) {
         Com_EPrintf("AC Screenshot: Async compress failed: %s\n", Q_ErrorString(work->status));
-        Z_Free(work->jpeg_buf);
+        Z_Free(work->image_buf);
         Z_Free(work);
         cl_ac_screenshot_pending = false;
         return;
@@ -121,34 +129,36 @@ static void cl_ac_screenshot_done_cb(void *arg)
 
     if (cls.state < ca_connected) {
         Com_DPrintf("AC Screenshot: Disconnected before send, discarding\n");
-        Z_Free(work->jpeg_buf);
+        Z_Free(work->image_buf);
         Z_Free(work);
         cl_ac_screenshot_pending = false;
         return;
     }
 
     // Check size fits in message
-    if (work->jpeg_size > 32000) {
-        Com_EPrintf("AC Screenshot: JPEG too large (%zu bytes), discarding\n", work->jpeg_size);
-        Z_Free(work->jpeg_buf);
+    if (work->image_size > 32000) {
+        Com_EPrintf("AC Screenshot: Image too large (%zu bytes), discarding\n", work->image_size);
+        Z_Free(work->image_buf);
         Z_Free(work);
         cl_ac_screenshot_pending = false;
         return;
     }
 
     // Send to server via netchan
+    // Protocol: [clc_screenshot][byte format][short width][short height][long image_size][image_data...]
     MSG_WriteByte(clc_screenshot);
+    MSG_WriteByte(AC_SCREENSHOT_FMT_WEBP);
     MSG_WriteShort(work->out_width);
     MSG_WriteShort(work->out_height);
-    MSG_WriteLong((int)work->jpeg_size);
-    MSG_WriteData(work->jpeg_buf, work->jpeg_size);
+    MSG_WriteLong((int)work->image_size);
+    MSG_WriteData(work->image_buf, work->image_size);
     Netchan_Transmit(&cls.netchan, msg_write.cursize, msg_write.data, 3);
     SZ_Clear(&msg_write);
 
-    Com_DPrintf("AC Screenshot: Sent %dx%d JPEG (%zu bytes)\n",
-                work->out_width, work->out_height, work->jpeg_size);
+    Com_DPrintf("AC Screenshot: Sent %dx%d WebP (%zu bytes)\n",
+                work->out_width, work->out_height, work->image_size);
 
-    Z_Free(work->jpeg_buf);
+    Z_Free(work->image_buf);
     Z_Free(work);
     cl_ac_screenshot_pending = false;
 }
@@ -164,7 +174,6 @@ void CL_AC_Init(void)
 {
     cl_ac_screenshot_enabled = Cvar_Get("cl_ac_screenshot_enabled", "1", 0);
     cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "55", 0);
-    cl_ac_screenshot_scale = Cvar_Get("cl_ac_screenshot_scale", "0.25", 0);
     cl_ac_screenshot_auto = Cvar_Get("cl_ac_screenshot_auto", "0", 0);
     cl_ac_screenshot_interval = Cvar_Get("cl_ac_screenshot_interval", "30", 0);
 }
@@ -173,11 +182,11 @@ void CL_AC_Init(void)
 ===============
 CL_AC_SendScreenshot
 
-Capture current frame and queue async JPEG compress + send.
+Capture current frame and queue async WebP compress + send.
 Called when server sends "cmd \177c screenshot_ac\n"
 
 Only GL readback (IMG_ReadPixels) runs on the main thread.
-Downscale + JPEG compress happen on the worker thread.
+Downscale + WebP compress happen on the worker thread.
 Netchan_Transmit happens on the main thread next frame via done_cb.
 ===============
 */
@@ -209,17 +218,26 @@ void CL_AC_SendScreenshot(void)
         return;
     }
 
-    // Calculate downscaled dimensions
-    new_width = (int)(s_full.width * cl_ac_screenshot_scale->value);
-    new_height = (int)(s_full.height * cl_ac_screenshot_scale->value);
+    // Calculate target dimensions maintaining aspect ratio
+    // Target: 640x480 max, scale down if source aspect doesn't match
+    {
+        float src_aspect = (float)s_full.width / (float)s_full.height;
+        float dst_aspect = (float)AC_SCREENSHOT_MAX_WIDTH / (float)AC_SCREENSHOT_MAX_HEIGHT;
+
+        if (src_aspect > dst_aspect) {
+            // Source is wider than 4:3, constrain by width
+            new_width = AC_SCREENSHOT_MAX_WIDTH;
+            new_height = (int)(AC_SCREENSHOT_MAX_WIDTH / src_aspect);
+        } else {
+            // Source is taller than 4:3, constrain by height
+            new_height = AC_SCREENSHOT_MAX_HEIGHT;
+            new_width = (int)(AC_SCREENSHOT_MAX_HEIGHT * src_aspect);
+        }
+    }
 
     // Clamp to reasonable minimums
-    if (new_width < 160) new_width = 160;
-    if (new_height < 120) new_height = 120;
-
-    // Clamp to maximum that fits in 32KB message
-    if (new_width > 480) new_width = 480;
-    if (new_height > 360) new_height = 360;
+    if (new_width < AC_SCREENSHOT_MIN_WIDTH) new_width = AC_SCREENSHOT_MIN_WIDTH;
+    if (new_height < AC_SCREENSHOT_MIN_HEIGHT) new_height = AC_SCREENSHOT_MIN_HEIGHT;
 
     // Allocate work structure
     work = Z_Malloc(sizeof(*work));
@@ -231,8 +249,8 @@ void CL_AC_SendScreenshot(void)
     work->target_width = new_width;
     work->target_height = new_height;
     work->quality = cl_ac_screenshot_quality->integer;
-    work->jpeg_buf = NULL;
-    work->jpeg_size = 0;
+    work->image_buf = NULL;
+    work->image_size = 0;
     work->out_width = 0;
     work->out_height = 0;
     work->status = 0;
