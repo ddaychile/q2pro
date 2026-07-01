@@ -2041,7 +2041,7 @@ void AC_ForwardACData(client_t *cl, int num_files, int num_cvars)
                 cl->name, num_files, num_cvars, data_size);
 }
 
-void AC_ForwardProcessData(client_t *cl, int num_processes, int num_modules,
+void AC_ForwardProcessData(client_t *cl, int num_processes,
                            const byte *data, int data_size)
 {
     int total;
@@ -2058,10 +2058,12 @@ void AC_ForwardProcessData(client_t *cl, int num_processes, int num_modules,
         return;
     }
 
-    // Build ACC_PROCESSDATA: cmd + clientID + challenge + nameLen + name + numProcesses + numModules + raw data
+    // Build ACC_PROCESSDATA: cmd + clientID + challenge + nameLen + name + numProcesses + raw data
+    // The raw data blob contains: [process entries...][num_modules][module entries...]
+    // The Go AC server parses this format directly.
     {
         size_t namelen = strlen(cl->name);
-        total = 1 + 4 + 4 + 1 + (int)namelen + 4 + 4 + data_size;
+        total = 1 + 4 + 4 + 1 + (int)namelen + 4 + data_size;
         MSG_WriteShort(total);
         MSG_WriteByte(ACC_PROCESSDATA);
         MSG_WriteLong(cl->number);
@@ -2069,14 +2071,13 @@ void AC_ForwardProcessData(client_t *cl, int num_processes, int num_modules,
         MSG_WriteByte((byte)namelen);
         MSG_WriteData(cl->name, namelen);
         MSG_WriteLong(num_processes);
-        MSG_WriteLong(num_modules);
         MSG_WriteData(data, data_size);
     }
 
     AC_Write(__func__);
 
-    Com_DPrintf("ANTICHEAT: Forwarded ProcessData from %s (%d processes, %d modules, %d bytes)\n",
-                cl->name, num_processes, num_modules, data_size);
+    Com_DPrintf("ANTICHEAT: Forwarded ProcessData from %s (%d processes, %d bytes)\n",
+                cl->name, num_processes, data_size);
 }
 
 void SV_SendACData(client_t *cl)

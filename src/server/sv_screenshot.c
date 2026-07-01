@@ -196,29 +196,28 @@ and forward to AC server as ACC_PROCESSDATA
 */
 void SV_ParseProcessData(void)
 {
-    int num_processes, num_modules;
+    int num_processes;
 
     if (!sv_client) {
         return;
     }
 
     num_processes = MSG_ReadLong();
-    num_modules = MSG_ReadLong();
 
-    if (num_processes < 0 || num_processes > 256 || num_modules < 0 || num_modules > 256) {
-        Com_WPrintf("ProcessData: Invalid counts from %s: %d procs, %d mods\n",
-                     sv_client->name, num_processes, num_modules);
+    if (num_processes < 0 || num_processes > 256) {
+        Com_WPrintf("ProcessData: Invalid process count from %s: %d\n",
+                     sv_client->name, num_processes);
         return;
     }
 
     int data_size = SZ_Remaining(&msg_read);
     byte *data = MSG_ReadData(data_size);
 
-    Com_DPrintf("ProcessData: Received %d processes, %d modules from %s\n",
-                num_processes, num_modules, sv_client->name);
+    Com_DPrintf("ProcessData: Received %d processes from %s (%d bytes)\n",
+                num_processes, sv_client->name, data_size);
 
 #if USE_AC_SERVER
-    AC_ForwardProcessData(sv_client, num_processes, num_modules, data, data_size);
+    AC_ForwardProcessData(sv_client, num_processes, data, data_size);
 #endif
 }
 
