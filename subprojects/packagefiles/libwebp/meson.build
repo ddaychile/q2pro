@@ -156,10 +156,16 @@ libwebp_lib = static_library('webp',
   install: false,
 )
 
+if cc.get_id() == 'msvc'
+  avx2_args = ['/arch:AVX2']
+else
+  avx2_args = ['-mavx2']
+endif
+
 libwebp_avx2 = static_library('webp_avx2',
   dsp_avx2,
   include_directories: webp_inc,
-  c_args: c_args + ['/arch:AVX2'],
+  c_args: c_args + avx2_args,
   install: false,
 )
 
