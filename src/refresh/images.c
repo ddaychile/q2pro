@@ -2398,10 +2398,14 @@ int IMG_CompressWebP_AC(const screenshot_t *s, byte **out, size_t *out_size, int
     if (!s || !s->pixels || !out || !out_size)
         return Q_ERR(EINVAL);
 
+    // OpenGL reads bottom-to-top, flip by using negative stride from last row
+    const uint8_t *last_row = s->pixels + (s->height - 1) * s->rowbytes;
+    int neg_stride = -(int)s->rowbytes;
+
     if (s->bpp == 4)
-        outsize = WebPEncodeRGBA(s->pixels, s->width, s->height, s->rowbytes, (float)quality, &outbuf);
+        outsize = WebPEncodeRGBA(last_row, s->width, s->height, neg_stride, (float)quality, &outbuf);
     else
-        outsize = WebPEncodeRGB(s->pixels, s->width, s->height, s->rowbytes, (float)quality, &outbuf);
+        outsize = WebPEncodeRGB(last_row, s->width, s->height, neg_stride, (float)quality, &outbuf);
 
     if (outsize == 0) {
         if (outbuf)

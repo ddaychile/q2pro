@@ -17,7 +17,6 @@ the Free Software Foundation; either version 2 of the License, or
 
 // Cvars
 static cvar_t *cl_ac_screenshot_enabled;
-static cvar_t *cl_ac_screenshot_quality;
 static cvar_t *cl_ac_screenshot_auto;
 static cvar_t *cl_ac_screenshot_interval;
 
@@ -48,7 +47,6 @@ typedef struct {
     byte   *pixels;
     int     width, height, bpp, rowbytes;
     int     target_width, target_height;
-    int     quality;
     // output from worker thread
     byte   *image_buf;
     size_t  image_size;
@@ -92,12 +90,29 @@ static void cl_ac_screenshot_work_cb(void *arg)
     Z_Free(work->pixels);
     work->pixels = NULL;
 
-    // Compress to WebP
-    ret = IMG_CompressWebP_AC(&s_small, &work->image_buf, &work->image_size, work->quality);
-    if (ret < 0) {
-        Z_Free(s_small.pixels);
-        work->status = ret;
-        return;
+    // Compress to WebP with adaptive quality loop
+    // Try decreasing qualities until image fits in 32KB netchan limit
+    {
+        static const int qualities[] = { 35, 25, 15 };
+        int i, num_qualities = 3;
+        for (i = 0; i < num_qualities; i++) {
+            ret = IMG_CompressWebP_AC(&s_small, &work->image_buf, &work->image_size, qualities[i]);
+            if (ret < 0) {
+                work->status = ret;
+                Z_Free(s_small.pixels);
+                return;
+            }
+            if (work->image_size <= 32000)
+                break;
+            Z_Free(work->image_buf);
+            work->image_buf = NULL;
+        }
+        if (work->image_size > 32000) {
+            work->status = Q_ERR(EOVERFLOW);
+            Z_Free(work->image_buf);
+            Z_Free(s_small.pixels);
+            return;
+        }
     }
 
     work->out_width = s_small.width;
@@ -173,7 +188,6 @@ Register anticheat screenshot cvars
 void CL_AC_Init(void)
 {
     cl_ac_screenshot_enabled = Cvar_Get("cl_ac_screenshot_enabled", "1", 0);
-    cl_ac_screenshot_quality = Cvar_Get("cl_ac_screenshot_quality", "35", 0);
     cl_ac_screenshot_auto = Cvar_Get("cl_ac_screenshot_auto", "0", 0);
     cl_ac_screenshot_interval = Cvar_Get("cl_ac_screenshot_interval", "30", 0);
 }
@@ -248,7 +262,6 @@ void CL_AC_SendScreenshot(void)
     work->rowbytes = s_full.rowbytes;
     work->target_width = new_width;
     work->target_height = new_height;
-    work->quality = cl_ac_screenshot_quality->integer;
     work->image_buf = NULL;
     work->image_size = 0;
     work->out_width = 0;
