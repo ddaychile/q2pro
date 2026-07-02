@@ -17,7 +17,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install meson sdl2 openal-soft libpng jpeg-turbo libcurl ffmpeg
+          brew install meson sdl2 openal-soft libpng jpeg-turbo ffmpeg
 
       - name: Build
         run: |
