@@ -1966,6 +1966,7 @@ void AC_PeriodicEnforcement(void)
 {
     client_t *cl;
     ac_cvar_t *c;
+    bool process_check_sent = false;
 
     if (!ac.ready || !ac_required->integer) {
         return;
@@ -1976,6 +1977,9 @@ void AC_PeriodicEnforcement(void)
     }
 
     ac.last_enforcement = svs.realtime;
+
+    bool want_process_check = ac_process_check->integer &&
+        svs.realtime - ac.last_process_check >= (unsigned)(ac_process_interval->integer * 1000);
 
     FOR_EACH_CLIENT(cl) {
         if (cl->state != cs_spawned || !cl->ac_valid) {
@@ -1989,14 +1993,14 @@ void AC_PeriodicEnforcement(void)
         SV_ClientCommand(cl, "set cl_ac_screenshot_interval %d\n", ac_screenshot_interval->integer);
 
         // Push process check if enabled and interval elapsed
-        if (ac_process_check->integer &&
-            svs.realtime - ac.last_process_check >= (unsigned)(ac_process_interval->integer * 1000)) {
+        if (want_process_check) {
             SV_ClientCommand(cl, "cl_ac_process_check\n");
+            process_check_sent = true;
         }
     }
 
-    // Update process check timer (once per enforcement cycle for all clients)
-    if (ac_process_check->integer) {
+    // Update process check timer only when actually sent
+    if (process_check_sent) {
         ac.last_process_check = svs.realtime;
     }
 }
