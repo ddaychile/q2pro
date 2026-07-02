@@ -1,6 +1,8 @@
 name: macOS
 
 on:
+  push:
+    branches: [anticheat-cl]
   workflow_dispatch:
 
 jobs:
