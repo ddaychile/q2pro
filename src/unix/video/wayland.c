@@ -44,6 +44,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <EGL/egl.h>
 
+#ifndef EGL_CONTEXT_OPENGL_ES_PROFILE_BIT
+#define EGL_CONTEXT_OPENGL_ES_PROFILE_BIT 0x00000004
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
