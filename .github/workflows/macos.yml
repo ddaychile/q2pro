@@ -36,6 +36,7 @@ jobs:
             -Dicmp-errors=disabled \
             -Dwindows-crash-dumps=disabled \
             -Dwrap_mode=nofallback \
+            -Dpkg_config_path=/opt/homebrew/opt/openal-soft/lib/pkgconfig \
             -Dclient-gtv=true \
             -Danticheat-server=true \
             -Dmvd-server=true \
