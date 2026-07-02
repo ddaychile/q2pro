@@ -495,7 +495,7 @@ config.set10('USE_TGA',           get_option('tga'))
 config.set10('USE_' + host_machine.endian().to_upper() + '_ENDIAN', true)
 
 if host_machine.system() == 'darwin'
-  config.set_quoted('DEFGLPROFILE', 'gl3.2')
+  config.set_quoted('DEFGLPROFILE', 'gl4.5')
 elif get_option('opengl-es1')
   config.set_quoted('DEFGLPROFILE', 'es1')
 else
