@@ -4,3 +4,8 @@
 /TAGS
 .cache/
 /anticheat_cl
+vcpkg_installed/
+meson_output.txt
+dday-nomandy-installer*/
+Discord/
+installer-repo/

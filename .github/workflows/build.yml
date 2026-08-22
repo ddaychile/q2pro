@@ -11,8 +11,9 @@ env:
     --auto-features=enabled
     --fatal-meson-warnings
     -Danticheat-server=true
-    -Davcodec=disabled
+    -Davcodec=enabled
     -Dclient-gtv=true
+    -Ddiscord=enabled
     -Dpacketdup-hack=true
     -Dtests=true
     -Dvariable-fps=true
@@ -30,12 +31,26 @@ env:
 
   MESON_ARGS_MACOS: >-
     -Dbuildtype=release
+    -Dsdl2=enabled
+    -Dopenal=enabled
+    -Dlibpng=enabled
+    -Dlibjpeg=enabled
+    -Dlibcurl=enabled
+    -Davcodec=enabled
+    -Dwebp=enabled
+    -Ddiscord=enabled
     -Dicmp-errors=disabled
-    -Dpkg_config_path=/opt/homebrew/opt/openal-soft/lib/pkgconfig
-    -Dwayland=disabled
     -Dwindows-crash-dumps=disabled
     -Dwrap_mode=nofallback
     -Dx11=disabled
+    -Dwayland=disabled
+    -Dsystem-wide=false
+    -Dclient-gtv=true
+    -Danticheat-server=true
+    -Dmvd-server=true
+    -Dmvd-client=true
+    -Dsave-games=true
+    -Dpkg_config_path=/opt/homebrew/opt/openal-soft/lib/pkgconfig
 
   MESON_ARGS_FREEBSD: >-
     -Dbuildtype=release
@@ -142,30 +157,74 @@ jobs:
 
   macos:
     runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
         run: |
           brew update
-          brew install meson sdl2 openal-soft libpng jpeg-turbo
-
-      - name: Build
+          brew install meson sdl2 openal-soft libpng jpeg-turbo ffmpeg webp
+      - name: Build ${{ matrix.arch }}
         run: |
-          meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_MACOS }} builddir
-          meson compile -C builddir
-
-      - name: Upload Artifacts
+          meson setup \
+            --cross-file=.ci/macos-${{ matrix.arch }}.txt \
+            ${{ env.MESON_ARGS }} \
+            ${{ env.MESON_ARGS_MACOS }} \
+            builddir-${{ matrix.arch }}
+          meson compile -C builddir-${{ matrix.arch }}
+      - name: Upload per-arch artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-macos
+          name: build-macos-${{ matrix.arch }}
           path: |
-            builddir/q2pro
-            builddir/q2proded
-            builddir/game*.dylib
+            builddir-${{ matrix.arch }}/q2pro
+            builddir-${{ matrix.arch }}/q2proded
+            builddir-${{ matrix.arch }}/game*.dylib
+
+  macos-universal:
+    needs: [macos]
+    runs-on: macos-latest
+    steps:
+      - name: Download per-arch artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+      - name: Create universal binaries
+        run: |
+          lipo -create -output q2pro.bin ./artifacts/build-macos-x86_64/q2pro ./artifacts/build-macos-arm64/q2pro
+          lipo -create -output q2proded ./artifacts/build-macos-x86_64/q2proded ./artifacts/build-macos-arm64/q2proded
+          lipo -create -output game.dylib ./artifacts/build-macos-x86_64/gamex86_64.dylib ./artifacts/build-macos-arm64/gamearm64.dylib
+      - name: Create universal Discord SDK dylib
+        run: |
+          lipo -create -output discord_game_sdk.dylib \
+            Discord/lib/x86_64/discord_game_sdk.dylib \
+            Discord/lib/aarch64/discord_game_sdk.dylib
+      - name: Fix rpath for Discord SDK
+        run: |
+          install_name_tool -change '@rpath/discord_game_sdk.dylib' '@loader_path/discord_game_sdk.dylib' q2pro.bin
+      - name: Ad-hoc code sign
+        run: |
+          codesign --sign - --force q2pro.bin q2proded game.dylib discord_game_sdk.dylib
+      - name: Create launcher
+        run: |
+          cp .github/mac/launch.sh q2pro
+          chmod +x q2pro q2pro.bin q2proded
+      - name: Upload universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos-universal
+          path: |
+            q2pro
+            q2pro.bin
+            q2proded
+            game.dylib
+            discord_game_sdk.dylib
             
   # Descargar y subir los achivos al release.
   release:
-    needs: [mingw, msvc, linux, macos] # Espera a que todos terminen
+    needs: [mingw, msvc, linux, macos-universal] # Espera a que todos terminen
     if: startsWith(github.ref, 'refs/tags/') # Solo se ejecuta si es un tag (ej: v1.0)
     runs-on: ubuntu-latest
     steps:
@@ -191,8 +250,11 @@ jobs:
             ./artifacts/build-msvc-x64/*.dll
             ./artifacts/build-linux-gcc/q2pro*
             ./artifacts/build-linux-gcc/*.so
-            ./artifacts/build-macos/q2pro*
-            ./artifacts/build-macos/*.dylib
+            ./artifacts/build-macos-universal/q2pro
+            ./artifacts/build-macos-universal/q2pro.bin
+            ./artifacts/build-macos-universal/q2proded
+            ./artifacts/build-macos-universal/game.dylib
+            ./artifacts/build-macos-universal/discord_game_sdk.dylib
           draft: false
           prerelease: false
         env:

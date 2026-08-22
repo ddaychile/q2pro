@@ -20,6 +20,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "client.h"
 #include "shared/m_flash.h"
 
+#if USE_DISCORD
+#include "discord.h"
+#endif
+
 /*
 =====================================================================
 
@@ -574,6 +578,11 @@ static void CL_ParseServerData(void)
 
     // get the full level name
     MSG_ReadString(levelname, sizeof(levelname));
+
+#if USE_DISCORD
+    int64_t start_ts = Sys_Milliseconds() / 1000;
+    Discord_UpdatePresenceMapMod(levelname, cl.gamedir, start_ts);
+#endif
 
     // setup default pmove parameters
     PmoveInit(&cl.pmp);

@@ -20,6 +20,10 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "client.h"
 #include "ac_process.h"
 
+#if USE_DISCORD
+#include "discord.h"
+#endif
+
 cvar_t  *rcon_address;
 
 cvar_t  *cl_noskins;
@@ -81,6 +85,10 @@ cvar_t  *cl_protocol;
 cvar_t  *gender_auto;
 
 cvar_t  *cl_vwep;
+
+#if USE_DISCORD
+cvar_t  *discord_client_id;
+#endif
 
 //
 // userinfo
@@ -1705,6 +1713,11 @@ void CL_Begin(void)
     CL_UpdatePredictSetting();
     CL_UpdateRecordingSetting();
     CL_UpdateFlaresSetting();
+
+#if USE_DISCORD
+    int64_t start_ts = Sys_Milliseconds() / 1000;
+    Discord_UpdatePresenceMapMod(cl.mapname, fs_game->string, start_ts);
+#endif
 }
 
 /*
@@ -2796,6 +2809,10 @@ static void CL_InitLocal(void)
     cl_flares = Cvar_Get("cl_flares", "1", 0);
     cl_flares->changed = cl_flares_changed;
 
+#if USE_DISCORD
+    discord_client_id = Cvar_Get("discord_client_id", "1539464653564809277", CVAR_ARCHIVE);
+#endif
+
 #if USE_FPS
     cl_updaterate = Cvar_Get("cl_updaterate", "0", 0);
     cl_updaterate->changed = cl_updaterate_changed;
@@ -3335,6 +3352,10 @@ unsigned CL_Frame(unsigned msec)
     // resend a connection request if necessary
     CL_CheckForResend();
 
+    #if USE_DISCORD
+    Discord_RunCallbacks();
+#endif
+
     // periodic anticheat screenshots
     CL_AC_Run();
 
@@ -3475,6 +3496,11 @@ void CL_Init(void)
     Con_PostInit();
     Con_RunConsole();
 
+#if USE_DISCORD
+    int64_t client_id = (int64_t)strtoll(discord_client_id->string, NULL, 10);
+    Discord_Init(client_id);
+#endif
+
     cl_cmdbuf.from = FROM_STUFFTEXT;
     cl_cmdbuf.text = cl_cmdbuf_text;
     cl_cmdbuf.maxsize = sizeof(cl_cmdbuf_text);
@@ -3507,6 +3533,11 @@ void CL_Shutdown(void)
 
     CL_GTV_Shutdown();
     CL_ACData_Shutdown();
+
+#if USE_DISCORD
+    Discord_ClearActivity();
+    Discord_Shutdown();
+#endif
 
     CL_Disconnect(ERR_FATAL);
 

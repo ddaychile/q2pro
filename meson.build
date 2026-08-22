@@ -1,9 +1,10 @@
-project('q2pro', 'c',
+project('q2pro', ['c', 'cpp'],
   license: 'GPL-2.0-or-later',
   version: run_command(find_program('python3'), 'version.py', check: true).stdout().strip(),
   meson_version: '>= 0.59.0',
   default_options: [
     'c_std=c11',
+    'cpp_std=c++11',
     'buildtype=debugoptimized',
   ],
 )
@@ -350,6 +351,59 @@ if openal.found()
   config.set10('USE_OPENAL', true)
 endif
 
+# Discord Game SDK (C++ bindings)
+discord_opt = get_option('discord')
+discord_inc = include_directories('Discord/c', 'Discord/cpp')
+discord_cpp_sources = [
+  'Discord/cpp/core.cpp',
+  'Discord/cpp/activity_manager.cpp',
+  'Discord/cpp/overlay_manager.cpp',
+  'Discord/cpp/user_manager.cpp',
+  'Discord/cpp/relationship_manager.cpp',
+  'Discord/cpp/lobby_manager.cpp',
+  'Discord/cpp/network_manager.cpp',
+  'Discord/cpp/application_manager.cpp',
+  'Discord/cpp/image_manager.cpp',
+  'Discord/cpp/storage_manager.cpp',
+  'Discord/cpp/store_manager.cpp',
+  'Discord/cpp/voice_manager.cpp',
+  'Discord/cpp/achievement_manager.cpp',
+  'Discord/cpp/types.cpp',
+  'src/client/discord_wrapper.cpp',
+]
+
+discord_link_args = []
+if host_machine.system() == 'windows'
+  discord_link_args = ['D:/q2pro/Discord/lib/x86_64/discord_game_sdk.dll.lib']
+elif host_machine.system() == 'darwin'
+  discord_link_args = ['-Wl,-rpath,@loader_path']
+endif
+
+discord_lib = static_library('discord_game_sdk_glue',
+  discord_cpp_sources,
+  include_directories: discord_inc,
+  gnu_symbol_visibility: 'hidden',
+  cpp_args: ['-std=c++11'],
+)
+
+discord_link_args = []
+if host_machine.system() == 'windows'
+  discord_link_args = ['D:/q2pro/Discord/lib/x86_64/discord_game_sdk.dll.lib']
+elif host_machine.system() == 'darwin'
+  discord_link_args = ['-Wl,-rpath,@loader_path']
+endif
+
+discord_sdk_dep = declare_dependency(
+  include_directories: discord_inc,
+  link_with: discord_lib,
+  link_args: discord_link_args,
+)
+
+if discord_opt.enabled()
+  config.set10('USE_DISCORD', true)
+  client_deps += discord_sdk_dep
+endif
+
 # require FFmpeg >= 5.1.3
 avcodec_opt = get_option('avcodec')
 avcodec = dependency('libavcodec', version: '>= 59.37.100', required: avcodec_opt)
@@ -524,6 +578,7 @@ summary({
   'client-gtv'         : config.get('USE_CLIENT_GTV', 0) != 0,
   'client-ui'          : config.get('USE_UI', 0) != 0,
   'debug'              : config.get('USE_DEBUG', 0) != 0,
+  'discord'            : config.get('USE_DISCORD', 0) != 0,
   'game-abi-hack'      : config.get('USE_GAME_ABI_HACK', 0) != 0,
   'game-new-api'       : config.get('USE_NEW_GAME_API', 0) != 0,
   'icmp-errors'        : config.get('USE_ICMP', 0) != 0,
