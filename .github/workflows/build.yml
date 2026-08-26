@@ -139,7 +139,8 @@ jobs:
           libpng-dev libjpeg-dev zlib1g-dev mesa-common-dev \
           libcurl4-gnutls-dev libx11-dev libxi-dev \
           libwayland-dev wayland-protocols libdecor-0-dev \
-          libwebp-dev libavcodec-dev
+          libwebp-dev libavcodec-dev libavformat-dev \
+          libavutil-dev libswresample-dev libswscale-dev
 
       - name: Build
         run: |

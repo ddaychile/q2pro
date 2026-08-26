@@ -31,7 +31,6 @@ int Discord_Init(int64_t client_id) {
     if (g_discord.initialized) return 1;
     if (client_id == 0) return 0;
 
-    discord::Core* core = nullptr;
     discord::Result result = discord::Core::Create(client_id, static_cast<uint64_t>(discord::CreateFlags::NoRequireDiscord), &g_discord.core);
     
     if (result != discord::Result::Ok || !g_discord.core) {
