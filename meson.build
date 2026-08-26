@@ -397,6 +397,7 @@ discord_cpp_args += ['-include', 'stdint.h', '-include', 'cstdint']
 # For MinGW cross-compilation on case-sensitive Linux, Discord SDK's ffi.h
 # includes <Windows.h> but MinGW only provides <windows.h> (lowercase).
 # Create a wrapper header to bridge the case mismatch.
+# Also need -fpermissive for MinGW's stricter lambda-to-function-pointer conversion.
 if host_machine.system() == 'windows' and cc.get_id() != 'msvc'
   compat_dir = meson.project_build_root() / 'compat-headers'
   run_command(find_program('python3'), '-c',
@@ -405,7 +406,7 @@ if host_machine.system() == 'windows' and cc.get_id() != 'msvc'
     'open(f, "w").write("#include <windows.h>\\n") if not os.path.exists(f) else None',
     compat_dir,
     check: true)
-  discord_cpp_args += ['-I' + compat_dir]
+  discord_cpp_args += ['-I' + compat_dir, '-fpermissive']
 endif
 
 discord_lib = static_library('discord_game_sdk_glue',

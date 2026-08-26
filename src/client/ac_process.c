@@ -128,6 +128,20 @@ static void ac_sha1_final(ac_sha1_ctx_t *ctx, uint8_t digest[AC_SHA1_SIZE])
     }
 }
 
+// SHA1 helper: hash a file (only needed for process detection on Win/Linux)
+// SHA1 cache: avoids re-hashing files that haven't changed
+#if defined(_WIN32) || defined(__linux__)
+typedef struct {
+    char path[AC_MAX_PATH];
+    int64_t mtime_sec;
+    int32_t mtime_nsec;
+    int64_t file_size;
+    uint8_t sha1[AC_SHA1_SIZE];
+    int valid;
+} ac_sha1_cache_entry_t;
+
+static ac_sha1_cache_entry_t ac_sha1_cache[AC_SHA1_CACHE_SIZE];
+
 static void ac_sha1_file(const char *path, uint8_t hash[AC_SHA1_SIZE])
 {
     FILE *f;
@@ -147,18 +161,6 @@ static void ac_sha1_file(const char *path, uint8_t hash[AC_SHA1_SIZE])
     ac_sha1_final(&ctx, hash);
     fclose(f);
 }
-
-// SHA1 cache: avoids re-hashing files that haven't changed
-typedef struct {
-    char path[AC_MAX_PATH];
-    int64_t mtime_sec;
-    int32_t mtime_nsec;
-    int64_t file_size;
-    uint8_t sha1[AC_SHA1_SIZE];
-    int valid;
-} ac_sha1_cache_entry_t;
-
-static ac_sha1_cache_entry_t ac_sha1_cache[AC_SHA1_CACHE_SIZE];
 
 #ifdef _WIN32
 #include <sys/stat.h>
@@ -217,7 +219,46 @@ static void ac_sha1_file_cached(const char *path, uint8_t hash[AC_SHA1_SIZE])
     ac_sha1_cache[oldest].file_size = st.st_size;
     ac_sha1_cache[oldest].valid = 1;
 }
-#endif
+#elif defined(__linux__)
+#include <sys/stat.h>
+static void ac_sha1_file_cached(const char *path, uint8_t hash[AC_SHA1_SIZE])
+{
+    struct stat st;
+    int i;
+
+    if (stat(path, &st) == 0) {
+        for (i = 0; i < AC_SHA1_CACHE_SIZE; i++) {
+            if (!ac_sha1_cache[i].valid) {
+                break;
+            }
+            if (strcmp(ac_sha1_cache[i].path, path) == 0) {
+                if (ac_sha1_cache[i].mtime_sec == st.st_mtime &&
+                    ac_sha1_cache[i].file_size == st.st_size) {
+                    memcpy(hash, ac_sha1_cache[i].sha1, AC_SHA1_SIZE);
+                    return;
+                }
+                ac_sha1_file(path, hash);
+                memcpy(ac_sha1_cache[i].sha1, hash, AC_SHA1_SIZE);
+                ac_sha1_cache[i].mtime_sec = st.st_mtime;
+                ac_sha1_cache[i].mtime_nsec = (int32_t)0;
+                ac_sha1_cache[i].file_size = st.st_size;
+                return;
+            }
+        }
+        ac_sha1_file(path, hash);
+        if (i >= AC_SHA1_CACHE_SIZE) i = 0;
+        Q_strlcpy(ac_sha1_cache[i].path, path, sizeof(ac_sha1_cache[i].path));
+        memcpy(ac_sha1_cache[i].sha1, hash, AC_SHA1_SIZE);
+        ac_sha1_cache[i].mtime_sec = st.st_mtime;
+        ac_sha1_cache[i].mtime_nsec = 0;
+        ac_sha1_cache[i].file_size = st.st_size;
+        ac_sha1_cache[i].valid = 1;
+    } else {
+        ac_sha1_file(path, hash);
+    }
+}
+#endif /* _WIN32 / __linux__ */
+#endif /* _WIN32 || __linux__ */
 
 // Process entry structure
 typedef struct {
