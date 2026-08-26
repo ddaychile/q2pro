@@ -222,13 +222,12 @@ static void ac_sha1_file_cached(const char *path, uint8_t hash[AC_SHA1_SIZE])
 static void ac_sha1_file_cached(const char *path, uint8_t hash[AC_SHA1_SIZE])
 {
     struct stat st;
-    int i, oldest;
+    int i;
 
     if (stat(path, &st) == 0) {
         // Search cache
         for (i = 0; i < AC_SHA1_CACHE_SIZE; i++) {
             if (!ac_sha1_cache[i].valid) {
-                oldest = i;
                 break;
             }
             if (strcmp(ac_sha1_cache[i].path, path) == 0) {

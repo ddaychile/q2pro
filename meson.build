@@ -392,6 +392,7 @@ discord_cpp_args = []
 if cc.get_id() != 'msvc'
   discord_cpp_args += ['-std=c++11']
 endif
+discord_cpp_args += ['-include', 'stdint.h', '-include', 'cstdint']
 
 discord_lib = static_library('discord_game_sdk_glue',
   discord_cpp_sources,

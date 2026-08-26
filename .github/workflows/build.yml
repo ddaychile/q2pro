@@ -76,7 +76,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y g++-mingw-w64 nasm meson ninja-build
+          sudo apt-get install -y g++-mingw-w64-x86-64 g++-mingw-w64-i686 mingw-w64-common mingw-w64-x86-64-dev mingw-w64-i686-dev nasm meson ninja-build
 
       - name: Build
         run: |

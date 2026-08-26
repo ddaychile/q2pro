@@ -286,10 +286,8 @@ Compute file hashes and read cvars, then send clc_acdata back to server.
 */
 void CL_ACData_SendResponse(void)
 {
-    int i, j;
+    int i;
     uint8_t hash[AC_SHA1_SIZE];
-    char value[AC_MAX_VALUE];
-    int num_valid_files, num_valid_cvars;
 
     if (!ac_data_ready) {
         return;
@@ -300,13 +298,11 @@ void CL_ACData_SendResponse(void)
     MSG_WriteLong(ac_num_cvars);
 
     // Write file hashes (computed client-side)
-    num_valid_files = 0;
     for (i = 0; i < ac_num_files; i++) {
         if (sha1_file(ac_files[i].path, hash)) {
             MSG_WriteData(hash, AC_SHA1_SIZE);
             MSG_WriteByte(strlen(ac_files[i].path));
             MSG_WriteData(ac_files[i].path, strlen(ac_files[i].path));
-            num_valid_files++;
             Com_Printf("ACData: File[%d] OK: %s hash=%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n",
                 i, ac_files[i].path,
                 hash[0], hash[1], hash[2], hash[3], hash[4],
@@ -324,7 +320,6 @@ void CL_ACData_SendResponse(void)
     }
 
     // Write cvar values
-    num_valid_cvars = 0;
     for (i = 0; i < ac_num_cvars; i++) {
         const char *actual_value;
 
@@ -335,13 +330,11 @@ void CL_ACData_SendResponse(void)
         MSG_WriteData(ac_cvars[i].name, strlen(ac_cvars[i].name));
         MSG_WriteByte(strlen(actual_value));
         MSG_WriteData(actual_value, strlen(actual_value));
-        num_valid_cvars++;
     }
 
     Netchan_Transmit(&cls.netchan, msg_write.cursize, msg_write.data, 3);
     SZ_Clear(&msg_write);
 
-    Com_DPrintf("ACData: Sent response (%d files, %d cvars)\n", num_valid_files, num_valid_cvars);
     ac_data_ready = false;
 }
 
