@@ -134,39 +134,6 @@ static bool sha1_file(const char *path, uint8_t digest[AC_SHA1_SIZE])
     return true;
 }
 
-// SHA1 helper: hash a string
-static void sha1_string(const char *s, uint8_t digest[AC_SHA1_SIZE])
-{
-    sha1_ctx_t ctx;
-
-    sha1_init(&ctx);
-    sha1_update(&ctx, (const uint8_t *)s, strlen(s));
-    sha1_final(&ctx, digest);
-}
-
-// Read file from byte buffer (matching AC_WriteString format: len-prefixed)
-static const char *ac_read_string(const byte *data, int data_len, int *offset, char *dest, int dest_size)
-{
-    int len;
-
-    if (*offset >= data_len) {
-        return NULL;
-    }
-
-    len = data[*offset];
-    (*offset)++;
-
-    if (*offset + len > data_len || len >= dest_size) {
-        return NULL;
-    }
-
-    memcpy(dest, data + *offset, len);
-    dest[len] = 0;
-    (*offset) += len;
-
-    return dest;
-}
-
 // Parse check list received from server
 typedef struct {
     char     path[AC_MAX_PATH];
