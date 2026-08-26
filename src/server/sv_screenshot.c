@@ -23,7 +23,7 @@ Protocol: [clc_screenshot][byte format][short width][short height][long image_si
 */
 void SV_ParseScreenshot(void)
 {
-    int format, width, height, image_size;
+    int width, height, image_size;
     byte *image_data;
 
     if (!sv_client) {
@@ -31,7 +31,7 @@ void SV_ParseScreenshot(void)
     }
 
     // Read format byte (0=jpeg, 1=webp)
-    format = MSG_ReadByte();
+    int format = MSG_ReadByte();
 
     // Read dimensions
     width = MSG_ReadShort();
@@ -64,6 +64,8 @@ void SV_ParseScreenshot(void)
 #if USE_AC_SERVER
     // Forward to anticheat server if connected
     AC_ForwardScreenshot(sv_client, width, height, format, image_data, image_size);
+#else
+    (void)format;
 #endif
 }
 
@@ -213,12 +215,12 @@ void SV_ParseProcessData(void)
         return;
     }
 
+#if USE_AC_SERVER
     int data_size = SZ_Remaining(&msg_read);
 
     Com_DPrintf("ProcessData: Received %d processes from %s (%d bytes)\n",
                 num_processes, sv_client->name, data_size);
 
-#if USE_AC_SERVER
     byte *data = MSG_ReadData(data_size);
     AC_ForwardProcessData(sv_client, num_processes, data, data_size);
 #endif

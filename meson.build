@@ -406,7 +406,7 @@ if host_machine.system() == 'windows' and cc.get_id() != 'msvc'
     'open(f, "w").write("#include <windows.h>\\n") if not os.path.exists(f) else None',
     compat_dir,
     check: true)
-  discord_cpp_args += ['-I' + compat_dir, '-fpermissive', '-Wno-error=permissive']
+  discord_cpp_args += ['-I' + compat_dir, '-fpermissive', '-Wno-error']
 endif
 
 discord_lib = static_library('discord_game_sdk_glue',
