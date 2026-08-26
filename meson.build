@@ -219,7 +219,7 @@ exe_link_args = []
 dll_link_args = []
 
 if host_machine.system() == 'darwin'
-  exe_link_args += '-Wl,-w'
+  common_args += '-fno-common'
 endif
 
 if cc.get_argument_syntax() == 'gcc'
