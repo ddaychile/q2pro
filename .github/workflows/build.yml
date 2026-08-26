@@ -20,6 +20,7 @@ env:
     -Dwerror=true
 
   MESON_ARGS_WIN: >-
+    -Davcodec=disabled
     -Dsdl2=disabled
     -Dwayland=disabled
     -Dwrap_mode=forcefallback
@@ -37,7 +38,7 @@ env:
     -Dlibjpeg=enabled
     -Dlibcurl=enabled
     -Davcodec=enabled
-    -Dwebp=enabled
+    -Dlibwebp=enabled
     -Ddiscord=enabled
     -Dicmp-errors=disabled
     -Dwindows-crash-dumps=disabled
@@ -75,7 +76,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-mingw-w64 nasm meson ninja-build
+          sudo apt-get install -y g++-mingw-w64 nasm meson ninja-build
 
       - name: Build
         run: |
@@ -138,7 +139,7 @@ jobs:
           libpng-dev libjpeg-dev zlib1g-dev mesa-common-dev \
           libcurl4-gnutls-dev libx11-dev libxi-dev \
           libwayland-dev wayland-protocols libdecor-0-dev \
-          libwebp-dev
+          libwebp-dev libavcodec-dev
 
       - name: Build
         run: |
