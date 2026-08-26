@@ -381,8 +381,13 @@ if host_machine.system() == 'windows'
     discord_link_args = [discord_sdk_dir / 'x86' / 'discord_game_sdk.dll.lib']
   endif
 elif host_machine.system() == 'darwin'
+  if host_machine.cpu_family() == 'aarch64'
+    discord_sdk_arch = 'aarch64'
+  else
+    discord_sdk_arch = 'x86_64'
+  endif
   discord_link_args = ['-Wl,-rpath,@loader_path',
-                       discord_sdk_dir / 'x86_64' / 'discord_game_sdk.dylib']
+                       discord_sdk_dir / discord_sdk_arch / 'discord_game_sdk.dylib']
 elif host_machine.system() == 'linux'
   discord_link_args = ['-Wl,-rpath,$ORIGIN',
                        discord_sdk_dir / 'x86_64' / 'discord_game_sdk.so']
