@@ -35,6 +35,9 @@ the Free Software Foundation; either version 2 of the License, or
 #define AC_SHA1_SIZE     20
 #define AC_SHA1_CACHE_SIZE 512
 
+// SHA1 and file hashing only needed for process detection on Win/Linux
+#if defined(_WIN32) || defined(__linux__)
+
 // Minimal SHA1 (same as ac_data.c)
 typedef struct {
     uint32_t state[5];
@@ -128,9 +131,6 @@ static void ac_sha1_final(ac_sha1_ctx_t *ctx, uint8_t digest[AC_SHA1_SIZE])
     }
 }
 
-// SHA1 helper: hash a file (only needed for process detection on Win/Linux)
-// SHA1 cache: avoids re-hashing files that haven't changed
-#if defined(_WIN32) || defined(__linux__)
 typedef struct {
     char path[AC_MAX_PATH];
     int64_t mtime_sec;

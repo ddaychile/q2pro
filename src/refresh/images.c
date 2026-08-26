@@ -2238,7 +2238,7 @@ int IMG_CompressJPEG(const screenshot_t *s, byte **out, size_t *out_size, int qu
     JSAMPARRAY row_pointers;
     unsigned char *outbuf = NULL;
     unsigned long outsize = 0;
-    int i, ret;
+    int i;
 
     if (!s || !s->pixels || !out || !out_size)
         return Q_ERR(EINVAL);
@@ -2313,7 +2313,7 @@ int IMG_CompressJPEG_AC(const screenshot_t *s, byte **out, size_t *out_size, int
     JSAMPARRAY row_pointers;
     unsigned char *outbuf = NULL;
     unsigned long outsize = 0;
-    int i, ret;
+    int i;
 
     if (!s || !s->pixels || !out || !out_size)
         return Q_ERR(EINVAL);
