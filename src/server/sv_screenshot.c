@@ -214,12 +214,12 @@ void SV_ParseProcessData(void)
     }
 
     int data_size = SZ_Remaining(&msg_read);
-    byte *data = MSG_ReadData(data_size);
 
     Com_DPrintf("ProcessData: Received %d processes from %s (%d bytes)\n",
                 num_processes, sv_client->name, data_size);
 
 #if USE_AC_SERVER
+    byte *data = MSG_ReadData(data_size);
     AC_ForwardProcessData(sv_client, num_processes, data, data_size);
 #endif
 }
