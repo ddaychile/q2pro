@@ -399,10 +399,11 @@ discord_cpp_args += ['-include', 'stdint.h', '-include', 'cstdint']
 # Create a wrapper header to bridge the case mismatch.
 if host_machine.system() == 'windows' and cc.get_id() != 'msvc'
   compat_dir = meson.project_build_root() / 'compat-headers'
-  run_command('mkdir', '-p', compat_dir, check: true)
-  run_command('sh', '-c',
-    'if [ ! -f "' + compat_dir + '/Windows.h" ]; then ' +
-    'echo \'#include <windows.h>\' > "' + compat_dir + '/Windows.h"; fi',
+  run_command(find_program('python3'), '-c',
+    'import os, sys; d=sys.argv[1]; os.makedirs(d, exist_ok=True); ' +
+    'f=os.path.join(d, "Windows.h"); ' +
+    'open(f, "w").write("#include <windows.h>\\n") if not os.path.exists(f) else None',
+    compat_dir,
     check: true)
   discord_cpp_args += ['-I' + compat_dir]
 endif
