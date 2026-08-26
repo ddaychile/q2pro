@@ -218,6 +218,10 @@ common_link_args = []
 exe_link_args = []
 dll_link_args = []
 
+if host_machine.system() == 'darwin'
+  exe_link_args += '-Wl,-w'
+endif
+
 if cc.get_argument_syntax() == 'gcc'
   if x86
     add_global_arguments('-msse2', '-mfpmath=sse', language: 'c')
