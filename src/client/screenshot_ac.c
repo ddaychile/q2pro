@@ -90,6 +90,7 @@ static void cl_ac_screenshot_work_cb(void *arg)
     Z_Free(work->pixels);
     work->pixels = NULL;
 
+#if USE_WEBP
     // Compress to WebP with adaptive quality loop
     // Try decreasing qualities until image fits in 32KB netchan limit
     {
@@ -114,6 +115,12 @@ static void cl_ac_screenshot_work_cb(void *arg)
             return;
         }
     }
+#else
+    // WebP not available
+    work->status = Q_ERR_LIBRARY_ERROR;
+    Z_Free(s_small.pixels);
+    return;
+#endif
 
     work->out_width = s_small.width;
     work->out_height = s_small.height;

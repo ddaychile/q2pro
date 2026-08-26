@@ -373,25 +373,32 @@ discord_cpp_sources = [
 ]
 
 discord_link_args = []
+discord_sdk_dir = meson.current_source_dir() / 'Discord' / 'lib'
 if host_machine.system() == 'windows'
-  discord_link_args = ['D:/q2pro/Discord/lib/x86_64/discord_game_sdk.dll.lib']
+  if host_machine.cpu_family() == 'x86_64'
+    discord_link_args = [discord_sdk_dir / 'x86_64' / 'discord_game_sdk.dll.lib']
+  else
+    discord_link_args = [discord_sdk_dir / 'x86' / 'discord_game_sdk.dll.lib']
+  endif
 elif host_machine.system() == 'darwin'
-  discord_link_args = ['-Wl,-rpath,@loader_path']
+  discord_link_args = ['-Wl,-rpath,@loader_path',
+                       discord_sdk_dir / 'x86_64' / 'discord_game_sdk.dylib']
+elif host_machine.system() == 'linux'
+  discord_link_args = ['-Wl,-rpath,$ORIGIN',
+                       discord_sdk_dir / 'x86_64' / 'discord_game_sdk.so']
+endif
+
+discord_cpp_args = []
+if cc.get_id() != 'msvc'
+  discord_cpp_args += ['-std=c++11']
 endif
 
 discord_lib = static_library('discord_game_sdk_glue',
   discord_cpp_sources,
   include_directories: discord_inc,
   gnu_symbol_visibility: 'hidden',
-  cpp_args: ['-std=c++11'],
+  cpp_args: discord_cpp_args,
 )
-
-discord_link_args = []
-if host_machine.system() == 'windows'
-  discord_link_args = ['D:/q2pro/Discord/lib/x86_64/discord_game_sdk.dll.lib']
-elif host_machine.system() == 'darwin'
-  discord_link_args = ['-Wl,-rpath,@loader_path']
-endif
 
 discord_sdk_dep = declare_dependency(
   include_directories: discord_inc,
