@@ -1801,6 +1801,11 @@ static const cmdreg_t c_server[] = {
     { "mvdstop", SV_Stop_f },
 #endif
 
+    // Anticheat screenshot commands
+    { "sv_screenshot", SV_Screenshot_f },
+    { "sv_screenshots", SV_ScreenshotList_f },
+    { "sv_screenshotall", SV_ScreenshotAll_f },
+
     { NULL }
 };
 

@@ -517,12 +517,13 @@ static bool parse_gl_version(void)
         return ver;
     }
 
-    // reject GL 1.0
-    if (ver >= QGL_VER(1, 1)) {
+    // reject GL < 4.5
+    if (ver >= QGL_VER(4, 5)) {
         gl_config.ver_gl = ver;
         return true;
     }
 
+    Com_EPrintf("OpenGL 4.5 or higher is required, got: %s\n", qglGetString(GL_VERSION));
     return false;
 }
 

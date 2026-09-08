@@ -395,7 +395,7 @@ static bool init(void)
             glXCreateContextAttribsARB = get_proc_addr("glXCreateContextAttribsARB");
 
         if (glXCreateContextAttribsARB) {
-            int ctx_attr[9];
+            int ctx_attr[11];
             int i = 0;
 
             if (cfg.profile) {
@@ -404,7 +404,10 @@ static bool init(void)
                 ctx_attr[i++] = GLX_CONTEXT_MINOR_VERSION_ARB;
                 ctx_attr[i++] = cfg.minor_ver;
             }
-            if (cfg.profile == QGL_PROFILE_ES) {
+            if (cfg.profile == QGL_PROFILE_CORE) {
+                ctx_attr[i++] = GLX_CONTEXT_PROFILE_MASK_ARB;
+                ctx_attr[i++] = GLX_CONTEXT_CORE_PROFILE_BIT_ARB;
+            } else if (cfg.profile == QGL_PROFILE_ES) {
                 ctx_attr[i++] = GLX_CONTEXT_PROFILE_MASK_ARB;
                 ctx_attr[i++] = GLX_CONTEXT_ES_PROFILE_BIT_EXT;
             }

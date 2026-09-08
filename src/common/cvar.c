@@ -31,6 +31,8 @@ cvar_t  *cvar_vars;
 
 int     cvar_modified;
 
+cvar_changed_func cvar_changed_notify;
+
 #define Cvar_Malloc(size)   Z_TagMalloc(size, TAG_CVAR)
 
 #define CVARHASH_SIZE    256
@@ -191,6 +193,11 @@ static void change_string_value(cvar_t *var, const char *value, from_t from)
         if (var->changed) {
             var->changed(var);
         }
+    }
+
+    // notify listeners (e.g. client anticheat) of the value change
+    if (cvar_changed_notify) {
+        cvar_changed_notify(var->name, var->string);
     }
 }
 

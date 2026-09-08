@@ -1,6 +1,6 @@
 option('anticheat-server',
   type: 'boolean',
-  value: false,
+  value: true,
   description: 'Enable r1ch.net anticheat server interface')
 
 option('auto-reply',
@@ -74,6 +74,11 @@ option('libpng',
   value: 'auto',
   description: 'libpng support')
 
+option('libwebp',
+  type: 'feature',
+  value: 'auto',
+  description: 'libwebp support')
+
 option('md3',
   type: 'boolean',
   value: true,
@@ -100,6 +105,11 @@ option('openal',
   type: 'feature',
   value: 'auto',
   description: 'OpenAL sound backend')
+
+option('discord',
+  type: 'feature',
+  value: 'auto',
+  description: 'Discord Game SDK support (Rich Presence, invites, overlay)')
 
 option('opengl-es1',
   type: 'boolean',

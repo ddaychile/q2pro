@@ -160,6 +160,9 @@ typedef enum {
     svc_configstringstream,
     svc_baselinestream,
 
+    // Anticheat check list (file hashes + cvar rules)
+    svc_acdata,
+
     svc_num_types
 } svc_ops_t;
 
@@ -217,7 +220,22 @@ typedef enum {
     // Q2PRO specific operations
     clc_move_nodelta = 10,
     clc_move_batched,
-    clc_userinfo_delta
+    clc_userinfo_delta,
+
+    // Anticheat screenshot
+    clc_screenshot = 20,   // [short width][short height][long jpeg_size][jpeg_data...]
+
+    // Anticheat client data (file hashes + cvar values)
+    clc_acdata = 21,       // [ac_data_message]
+
+    // Anticheat process data (running processes + modules)
+    clc_processdata = 22,   // [process_data_message]
+
+    // Anticheat cvar change notification (watched cvars modified mid-game)
+    clc_cvarchange = 23,    // [uint32 count]{[name][value]}...
+
+    // Anticheat spiked model notification (rejected player/weapon geometry)
+    clc_acspike = 24        // [uint32 count]{[uint8 len][path]}...
 } clc_ops_t;
 
 //==============================================

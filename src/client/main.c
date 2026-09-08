@@ -18,6 +18,11 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 // cl_main.c  -- client main loop
 
 #include "client.h"
+#include "ac_process.h"
+
+#if USE_DISCORD
+#include "discord.h"
+#endif
 
 cvar_t  *rcon_address;
 
@@ -80,6 +85,10 @@ cvar_t  *cl_protocol;
 cvar_t  *gender_auto;
 
 cvar_t  *cl_vwep;
+
+#if USE_DISCORD
+cvar_t  *discord_client_id;
+#endif
 
 //
 // userinfo
@@ -1000,6 +1009,11 @@ static void CL_Changing_f(void)
     cl.mapname[0] = 0;
     cl.configstrings[CS_NAME][0] = 0;
 
+    // flush the SHA1 cache before the new level loads: if a file was
+    // swapped during the previous map with the same size, the cache
+    // must not serve a stale digest.
+    CL_ACData_ResetCache();
+
     CL_CheckForPause();
 
     CL_UpdateFrameTimes();
@@ -1704,6 +1718,11 @@ void CL_Begin(void)
     CL_UpdatePredictSetting();
     CL_UpdateRecordingSetting();
     CL_UpdateFlaresSetting();
+
+#if USE_DISCORD
+    int64_t start_ts = Sys_Milliseconds() / 1000;
+    Discord_UpdatePresenceMapMod(cl.mapname, fs_game->string, start_ts);
+#endif
 }
 
 /*
@@ -1742,6 +1761,9 @@ static void CL_Precache_f(void)
 
     CL_ResetPrecacheCheck();
     CL_RequestNextDownload();
+
+    // request a process/module snapshot for this new level
+    CL_AC_RequestProcessCheck();
 
     if (cls.state != ca_precached) {
         cls.state = ca_connected;
@@ -2416,6 +2438,12 @@ void CL_RestartFilesystem(bool total)
 
     CL_UpdateFrameTimes();
 
+    // re-validate protected files after the VFS was restarted: the new
+    // search paths may resolve files differently, and any on-disk swaps
+    // taken effect when the renderer re-registered models above.
+    CL_ACData_Revalidate();
+    CL_AC_RequestProcessCheck();
+
     cvar_modified &= ~CVAR_FILES;
 }
 
@@ -2467,6 +2495,12 @@ void CL_RestartRefresh(bool total)
     Con_Close(false);
 
     CL_UpdateFrameTimes();
+
+    // re-validate protected files right after the models were re-read from
+    // disk: a model replaced mid-game only takes effect once it is loaded
+    // again (vid_restart / reload), so report it to the server immediately
+    CL_ACData_Revalidate();
+    CL_AC_RequestProcessCheck();
 
     cvar_modified &= ~CVAR_FILES;
 }
@@ -2565,6 +2599,14 @@ static void exec_server_string(cmdbuf_t *buf, const char *text)
     // handle commands that are always allowed
     if (!strcmp(s, "reconnect")) {
         CL_Reconnect_f();
+        return;
+    }
+    if (!strcmp(s, "screenshot_ac")) {
+        Cmd_ExecuteCommand(buf);
+        return;
+    }
+    if (!strcmp(s, "cl_ac_process_check")) {
+        Cmd_ExecuteCommand(buf);
         return;
     }
     if (!strcmp(s, "cmd") && !cls.stufftextwhitelist) {
@@ -2712,6 +2754,10 @@ static void CL_InitLocal(void)
     CL_InitTEnts();
     CL_InitDownloads();
     CL_GTV_Init();
+    CL_AC_Init();
+    CL_ACData_Init();
+    CL_AC_ProcessInit();
+    CL_AC_RegisterCommands();
 
     Cmd_Register(c_client);
 
@@ -2783,6 +2829,10 @@ static void CL_InitLocal(void)
     cl_flares = Cvar_Get("cl_flares", "1", 0);
     cl_flares->changed = cl_flares_changed;
 
+#if USE_DISCORD
+    discord_client_id = Cvar_Get("discord_client_id", "1539464653564809277", CVAR_ARCHIVE);
+#endif
+
 #if USE_FPS
     cl_updaterate = Cvar_Get("cl_updaterate", "0", 0);
     cl_updaterate->changed = cl_updaterate_changed;
@@ -2798,7 +2848,7 @@ static void CL_InitLocal(void)
     cl_changemapcmd = Cvar_Get("cl_changemapcmd", "", 0);
     cl_beginmapcmd = Cvar_Get("cl_beginmapcmd", "", 0);
 
-    cl_ignore_stufftext = Cvar_Get("cl_ignore_stufftext", "0", 0);
+    cl_ignore_stufftext = Cvar_Get("cl_ignore_stufftext", "0", CVAR_ROM);
     cl_allow_vid_restart = Cvar_Get("cl_allow_vid_restart", "0", 0);
 
     cl_protocol = Cvar_Get("cl_protocol", "0", 0);
@@ -3322,6 +3372,13 @@ unsigned CL_Frame(unsigned msec)
     // resend a connection request if necessary
     CL_CheckForResend();
 
+    #if USE_DISCORD
+    Discord_RunCallbacks();
+#endif
+
+    // periodic anticheat screenshots
+    CL_AC_Run();
+
     // read user intentions
     CL_UpdateCmd(main_extra);
 
@@ -3459,6 +3516,11 @@ void CL_Init(void)
     Con_PostInit();
     Con_RunConsole();
 
+#if USE_DISCORD
+    int64_t client_id = (int64_t)strtoll(discord_client_id->string, NULL, 10);
+    Discord_Init(client_id);
+#endif
+
     cl_cmdbuf.from = FROM_STUFFTEXT;
     cl_cmdbuf.text = cl_cmdbuf_text;
     cl_cmdbuf.maxsize = sizeof(cl_cmdbuf_text);
@@ -3490,6 +3552,12 @@ void CL_Shutdown(void)
     }
 
     CL_GTV_Shutdown();
+    CL_ACData_Shutdown();
+
+#if USE_DISCORD
+    Discord_ClearActivity();
+    Discord_Shutdown();
+#endif
 
     CL_Disconnect(ERR_FATAL);
 

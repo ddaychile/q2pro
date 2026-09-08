@@ -95,17 +95,5 @@ image_t *IMG_ForHandle(qhandle_t h);
 void IMG_Unload(image_t *image);
 void IMG_Load(image_t *image, byte *pic);
 
-typedef struct screenshot_s screenshot_t;
-
-typedef int (*save_cb_t)(const screenshot_t *);
-
-struct screenshot_s {
-    save_cb_t save_cb;
-    byte *pixels;
-    FILE *fp;
-    char *filename;
-    int width, height, rowbytes, bpp, status, param;
-    bool async;
-};
-
-int IMG_ReadPixels(screenshot_t *s);
+// screenshot_t, save_cb_t, IMG_ReadPixels, IMG_CompressJPEG, IMG_Downscale
+// are declared in refresh/refresh.h for use by both client and renderer

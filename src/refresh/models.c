@@ -44,6 +44,16 @@ static int          r_numModels;
 
 static memhunk_t    temp_hunk[2];
 
+// maximum per-axis bounding-box size (in world units) allowed for an alias
+// model. any frame whose bounds extend beyond this on an axis is treated as
+// a "spiked" model (vertices stretched to extreme distances to wallhack).
+static cvar_t      *cl_ac_max_model_size;
+
+// path to the most recently rejected "spiked" model, consumed by the client
+// anticheat layer (CL_AC_FlushSpikedModels) and reported to the server.
+static char         ac_spiked_model[MAX_QPATH];
+static bool         ac_models_reloaded;
+
 static model_t *MOD_Alloc(void)
 {
     model_t *model;
@@ -1543,6 +1553,98 @@ static bool MOD_UploadIndexBuffer(model_t *model, memhunk_t *hunk)
     return true;
 }
 
+/*
+=================
+ValidateModelGeometry
+
+Anti-wallhack: inspect the per-frame axis-aligned bounding box of an alias
+model (MD2/MD3). The loader already computes the absolute mins/maxs for each
+frame in maliasframe_t::bounds[2]. If any axis delta exceeds the configured
+threshold the model is flagged as "spiked" (a vertex stretched to an extreme
+distance) and the load is rejected.
+
+Runs once at model registration time, never in the per-frame render loop.
+=================
+*/
+static bool ValidateModelGeometry(const model_t *model)
+{
+    const maliasframe_t *frame;
+    vec_t maxsize, dx, dy, dz;
+    int i;
+
+    if (model->type != MOD_ALIAS) {
+        return true;
+    }
+
+    // Only competitive models (players and weapons) get the strict geometric
+    // filter. Larger models (ships, monsters, items, ...) are legitimate and
+    // give no advantage, so they are exempt.
+    if (memcmp(model->name, "players/", sizeof("players/") - 1) &&
+        memcmp(model->name, "models/weapons/", sizeof("models/weapons/") - 1)) {
+        return true;
+    }
+
+    // disabled when <= 0
+    maxsize = cl_ac_max_model_size->value;
+    if (maxsize <= 0) {
+        return true;
+    }
+
+    for (i = 0, frame = model->frames; i < model->numframes; i++, frame++) {
+        dx = frame->bounds[1][0] - frame->bounds[0][0];
+        dy = frame->bounds[1][1] - frame->bounds[0][1];
+        dz = frame->bounds[1][2] - frame->bounds[0][2];
+
+        if (fabsf(dx) > maxsize || fabsf(dy) > maxsize || fabsf(dz) > maxsize) {
+            Com_Printf("^1AC: model \"%s\" rejected as spiked "
+                       "(frame %d, bbox %.2f x %.2f x %.2f exceeds %.2f)\n",
+                       model->name, i, fabsf(dx), fabsf(dy), fabsf(dz), maxsize);
+
+            Q_strlcpy(ac_spiked_model, model->name, sizeof(ac_spiked_model));
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/*
+=================
+MOD_GetSpikedModel
+
+Return the path of the most recently rejected "spiked" model, consuming the
+record. Returns false when there is nothing pending. Called by the client
+anticheat layer to report the violation to the server.
+=================
+*/
+bool MOD_GetSpikedModel(char *buf, size_t size)
+{
+    if (!ac_spiked_model[0]) {
+        return false;
+    }
+
+    Q_strlcpy(buf, ac_spiked_model, size);
+    ac_spiked_model[0] = 0;
+    return true;
+}
+
+/*
+=================
+MOD_GetModelsReloaded
+
+Return true if any model was (re)loaded from disk since the last call,
+consuming the flag. Called by the client anticheat layer to trigger a
+process/module hash at model-reload boundaries (map load, vid_restart,
+model swap attempts).
+=================
+*/
+bool MOD_GetModelsReloaded(void)
+{
+    bool r = ac_models_reloaded;
+    ac_models_reloaded = false;
+    return r;
+}
+
 qhandle_t R_RegisterModel(const char *name)
 {
     char normalized[MAX_QPATH];
@@ -1632,6 +1734,14 @@ qhandle_t R_RegisterModel(const char *name)
         goto fail1;
     }
 
+    // second defensive layer: reject spiked geometry (wallhack)
+    if (!ValidateModelGeometry(model)) {
+        MOD_Free(model);
+        ret = Q_ERR_INVALID_FORMAT;
+        Com_SetLastError("spiked geometry");
+        goto fail1;
+    }
+
 #if USE_MD5
     // check for an MD5; this requires the MD2/MD3
     // to have loaded first, since we need it for skin names
@@ -1650,6 +1760,9 @@ qhandle_t R_RegisterModel(const char *name)
             goto fail1;
         }
     }
+
+    // model successfully (re)loaded from disk — mark for anticheat
+    ac_models_reloaded = true;
 
 done:
     index = (model - r_models) + 1;
@@ -1692,6 +1805,9 @@ void MOD_Init(void)
 
     cvar_t *gl_gpulerp = Cvar_Get("gl_gpulerp", "1", 0);
     gl_gpulerp->flags &= ~CVAR_FILES;
+
+    // allowed per-axis model size; 0 disables the geometric spike filter
+    cl_ac_max_model_size = Cvar_Get("cl_ac_max_model_size", "128", CVAR_ARCHIVE);
 
     if (!(gl_config.caps & QGL_CAP_CLIENT_VA)) {
         // MUST use GPU lerp if using core profile

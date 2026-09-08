@@ -44,6 +44,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include <EGL/egl.h>
 
+#ifndef EGL_CONTEXT_OPENGL_ES_PROFILE_BIT
+#define EGL_CONTEXT_OPENGL_ES_PROFILE_BIT 0x00000004
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
@@ -808,10 +812,26 @@ static bool init(void)
     CHECK_ERR(wl.cursor_surface = wl_compositor_create_surface(wl.compositor), "wl_compositor_create_surface");
     reload_cursor();
 
-    EGLint ctx_attr[] = {
-        EGL_CONTEXT_OPENGL_DEBUG, cfg.debug,
-        EGL_NONE
-    };
+    EGLint ctx_attr[11];
+    int i = 0;
+    if (cfg.debug) {
+        ctx_attr[i++] = EGL_CONTEXT_OPENGL_DEBUG;
+        ctx_attr[i++] = EGL_TRUE;
+    }
+    if (cfg.profile) {
+        ctx_attr[i++] = EGL_CONTEXT_MAJOR_VERSION;
+        ctx_attr[i++] = cfg.major_ver;
+        ctx_attr[i++] = EGL_CONTEXT_MINOR_VERSION;
+        ctx_attr[i++] = cfg.minor_ver;
+        if (cfg.profile == QGL_PROFILE_CORE) {
+            ctx_attr[i++] = EGL_CONTEXT_OPENGL_PROFILE_MASK;
+            ctx_attr[i++] = EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT;
+        } else if (cfg.profile == QGL_PROFILE_ES) {
+            ctx_attr[i++] = EGL_CONTEXT_OPENGL_PROFILE_MASK;
+            ctx_attr[i++] = EGL_CONTEXT_OPENGL_ES_PROFILE_BIT;
+        }
+    }
+    ctx_attr[i] = EGL_NONE;
     if (egl_major == 1 && egl_minor < 5)
         ctx_attr[0] = EGL_NONE;
 
