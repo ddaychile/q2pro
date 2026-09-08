@@ -378,6 +378,7 @@ typedef struct client_s {
     ac_required_t   ac_required;
     int             ac_file_failures;
     unsigned        ac_query_time;
+    unsigned        ac_requery_time; // last time svc_acdata re-query was sent
     int             ac_client_type;
     string_entry_t  *ac_bad_files;
     char            *ac_token;
@@ -741,26 +742,36 @@ void SV_ScreenshotList_f(void);
 void SV_ScreenshotAll_f(void);
 void SV_ParseACData(void);
 void SV_ParseProcessData(void);
+void SV_ParseCvarChange(void);
+void SV_ParseSpikeModel(void);
 
 #if USE_AC_SERVER
 void SV_SendACData(client_t *cl);
 void AC_ForwardScreenshot(client_t *cl, int width, int height, int format, const byte *data, int data_size);
 void AC_ForwardACData(client_t *cl, int num_files, int num_cvars);
-void AC_ForwardProcessData(client_t *cl, int num_processes,
+void AC_ForwardProcessData(client_t *cl, int flags, int num_processes,
                            const byte *data, int data_size);
+void AC_ForwardCvarChange(client_t *cl, const char *name, const char *value);
+void AC_ForwardSpikedModel(client_t *cl, const char *path);
+void AC_EnforceCvarChange(client_t *cl, const char *name, const char *value);
 void AC_EnforceClientCvars(client_t *cl, int num_files, int num_cvars);
 void AC_PeriodicEnforcement(void);
 void AC_ClientNameChanged(client_t *cl, const char *old_name);
 void AC_HostnameChanged(void);
+void AC_NotifyLoading(client_t *cl);
 #else
 #define SV_SendACData(cl) (void)0
 #define AC_ForwardScreenshot(cl, w, h, f, d, s) (void)0
 #define AC_ForwardACData(cl, f, c) (void)0
-#define AC_ForwardProcessData(cl, p, d, s) (void)0
+#define AC_ForwardProcessData(cl, f, p, d, s) (void)0
+#define AC_ForwardCvarChange(cl, n, v) (void)0
+#define AC_ForwardSpikedModel(cl, p) (void)0
+#define AC_EnforceCvarChange(cl, n, v) (void)0
 #define AC_EnforceClientCvars(cl, f, c) (void)0
 #define AC_PeriodicEnforcement() (void)0
 #define AC_ClientNameChanged(cl, old) (void)0
 #define AC_HostnameChanged()          (void)0
+#define AC_NotifyLoading(cl)          (void)0
 #endif
 
 //

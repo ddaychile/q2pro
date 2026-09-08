@@ -1009,6 +1009,11 @@ static void CL_Changing_f(void)
     cl.mapname[0] = 0;
     cl.configstrings[CS_NAME][0] = 0;
 
+    // flush the SHA1 cache before the new level loads: if a file was
+    // swapped during the previous map with the same size, the cache
+    // must not serve a stale digest.
+    CL_ACData_ResetCache();
+
     CL_CheckForPause();
 
     CL_UpdateFrameTimes();
@@ -1757,6 +1762,9 @@ static void CL_Precache_f(void)
     CL_ResetPrecacheCheck();
     CL_RequestNextDownload();
 
+    // request a process/module snapshot for this new level
+    CL_AC_RequestProcessCheck();
+
     if (cls.state != ca_precached) {
         cls.state = ca_connected;
     }
@@ -2430,6 +2438,12 @@ void CL_RestartFilesystem(bool total)
 
     CL_UpdateFrameTimes();
 
+    // re-validate protected files after the VFS was restarted: the new
+    // search paths may resolve files differently, and any on-disk swaps
+    // taken effect when the renderer re-registered models above.
+    CL_ACData_Revalidate();
+    CL_AC_RequestProcessCheck();
+
     cvar_modified &= ~CVAR_FILES;
 }
 
@@ -2481,6 +2495,12 @@ void CL_RestartRefresh(bool total)
     Con_Close(false);
 
     CL_UpdateFrameTimes();
+
+    // re-validate protected files right after the models were re-read from
+    // disk: a model replaced mid-game only takes effect once it is loaded
+    // again (vid_restart / reload), so report it to the server immediately
+    CL_ACData_Revalidate();
+    CL_AC_RequestProcessCheck();
 
     cvar_modified &= ~CVAR_FILES;
 }

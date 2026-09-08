@@ -28,12 +28,19 @@ the Free Software Foundation; either version 2 of the License, or
 #include <string.h>
 #endif
 
-#define AC_MAX_PROCESSES 256
-#define AC_MAX_MODULES   256
+#define AC_MAX_PROCESSES 1024
+#define AC_MAX_MODULES   1024
 #define AC_MAX_NAME      256
 #define AC_MAX_PATH      256
 #define AC_SHA1_SIZE     20
 #define AC_SHA1_CACHE_SIZE 512
+
+// Process data batch flags (wire format)
+#define AC_PD_TRUNCATED  0x01   // snapshot incomplete (more processes/modules than stored)
+#define AC_PD_FINAL      0x02   // last batch of this snapshot
+
+// Maximum bytes per batch message (stay well under 32 KiB msg_write buffer)
+#define AC_BATCH_MAX     16000
 
 // SHA1 and file hashing only needed for process detection on Win/Linux
 #if defined(_WIN32) || defined(__linux__)
@@ -278,6 +285,10 @@ static ac_process_entry_t ac_processes[AC_MAX_PROCESSES];
 static ac_module_entry_t  ac_modules[AC_MAX_MODULES];
 static int ac_num_processes;
 static int ac_num_modules;
+static int ac_total_processes;   // real count including those not stored
+static int ac_total_modules;
+static qboolean ac_truncated_processes;
+static qboolean ac_truncated_modules;
 
 #ifdef _WIN32
 /*
@@ -294,6 +305,8 @@ static void ac_enumerate_processes_win32(void)
     DWORD my_pid;
 
     ac_num_processes = 0;
+    ac_total_processes = 0;
+    ac_truncated_processes = false;
     my_pid = GetCurrentProcessId();
 
     snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -303,12 +316,16 @@ static void ac_enumerate_processes_win32(void)
     pe.dwSize = sizeof(pe);
     if (Process32First(snap, &pe)) {
         do {
-            if (ac_num_processes >= AC_MAX_PROCESSES)
-                break;
-
             // Skip our own process
             if (pe.th32ProcessID == my_pid)
                 continue;
+
+            ac_total_processes++;
+
+            if (ac_num_processes >= AC_MAX_PROCESSES) {
+                ac_truncated_processes = true;
+                continue;
+            }
 
             ac_processes[ac_num_processes].pid = pe.th32ProcessID;
             ac_processes[ac_num_processes].parent_pid = pe.th32ParentProcessID;
@@ -336,6 +353,8 @@ static void ac_enumerate_modules_win32(void)
     int i;
 
     ac_num_modules = 0;
+    ac_total_modules = 0;
+    ac_truncated_modules = false;
 
     proc = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
                        FALSE, GetCurrentProcessId());
@@ -344,15 +363,12 @@ static void ac_enumerate_modules_win32(void)
 
     if (EnumProcessModules(proc, mods, sizeof(mods), &needed)) {
         int count = needed / sizeof(HMODULE);
-        if (count > AC_MAX_MODULES)
-            count = AC_MAX_MODULES;
 
         for (i = 0; i < count; i++) {
             char mod_name[AC_MAX_PATH];
             char mod_path[AC_MAX_PATH];
 
-            if (ac_num_modules >= AC_MAX_MODULES)
-                break;
+            ac_total_modules++;
 
             if (GetModuleFileNameExA(proc, mods[i], mod_path, sizeof(mod_path))) {
                 const char *slash = strrchr(mod_path, '\\');
@@ -361,6 +377,11 @@ static void ac_enumerate_modules_win32(void)
             } else {
                 Q_strlcpy(mod_name, "unknown", sizeof(mod_name));
                 mod_path[0] = 0;
+            }
+
+            if (ac_num_modules >= AC_MAX_MODULES) {
+                ac_truncated_modules = true;
+                continue;
             }
 
             Q_strlcpy(ac_modules[ac_num_modules].name, mod_name,
@@ -394,6 +415,8 @@ static void ac_enumerate_processes_linux(void)
     int my_pid;
 
     ac_num_processes = 0;
+    ac_total_processes = 0;
+    ac_truncated_processes = false;
     my_pid = getpid();
 
     dir = opendir("/proc");
@@ -401,15 +424,19 @@ static void ac_enumerate_processes_linux(void)
         return;
 
     while ((ent = readdir(dir)) != NULL) {
-        if (ac_num_processes >= AC_MAX_PROCESSES)
-            break;
-
         if (ent->d_name[0] < '0' || ent->d_name[0] > '9')
             continue;
 
         int pid = atoi(ent->d_name);
         if (pid == my_pid)
             continue;
+
+        ac_total_processes++;
+
+        if (ac_num_processes >= AC_MAX_PROCESSES) {
+            ac_truncated_processes = true;
+            continue;
+        }
 
         Q_snprintf(path, sizeof(path), "/proc/%s/comm", ent->d_name);
         f = fopen(path, "r");
@@ -446,15 +473,14 @@ static void ac_enumerate_modules_linux(void)
     char last_path[AC_MAX_PATH] = {0};
 
     ac_num_modules = 0;
+    ac_total_modules = 0;
+    ac_truncated_modules = false;
 
     f = fopen("/proc/self/maps", "r");
     if (!f)
         return;
 
     while (fgets(line, sizeof(line), f)) {
-        if (ac_num_modules >= AC_MAX_MODULES)
-            break;
-
         char *nl = strchr(line, '\n');
         if (nl) *nl = 0;
 
@@ -488,6 +514,13 @@ static void ac_enumerate_modules_linux(void)
             continue;
         Q_strlcpy(last_path, filepath, sizeof(last_path));
 
+        ac_total_modules++;
+
+        if (ac_num_modules >= AC_MAX_MODULES) {
+            ac_truncated_modules = true;
+            continue;
+        }
+
         const char *slash = strrchr(filepath, '/');
         Q_strlcpy(ac_modules[ac_num_modules].name,
                   slash ? slash + 1 : filepath,
@@ -504,14 +537,19 @@ static void ac_enumerate_modules_linux(void)
 
 /*
 ==============
-CL_AC_ProcessCheck_f
+CL_AC_ProcessCheckNow
 
-Handler for server stufftext "cl_ac_process_check".
+Run the process/module enumeration and send snapshot to server.
+Gated on having an active netchan. Called directly by the flush path
+on model-reload / map-change events, and also by the command handler
+when the server stuffs "cl_ac_process_check".
 ==============
 */
-static void CL_AC_ProcessCheck_f(void)
+void CL_AC_ProcessCheckNow(void)
 {
-    int i;
+    int i, j;
+    int proc_idx, mod_idx;
+    byte flags;
 
     if (!cls.netchan.remote_address.type)
         return;
@@ -525,37 +563,116 @@ static void CL_AC_ProcessCheck_f(void)
 #else
     ac_num_processes = 0;
     ac_num_modules = 0;
+    ac_total_processes = 0;
+    ac_total_modules = 0;
+    ac_truncated_processes = false;
+    ac_truncated_modules = false;
 #endif
 
-    Com_DPrintf("ProcessCheck: Found %d processes, %d modules\n",
-                ac_num_processes, ac_num_modules);
+    Com_DPrintf("ProcessCheck: Found %d/%d processes, %d/%d modules\n",
+                ac_num_processes, ac_total_processes,
+                ac_num_modules, ac_total_modules);
 
-    // Build and send clc_processdata
-    MSG_WriteByte(clc_processdata);
-    MSG_WriteLong(ac_num_processes);
+    // Truncated flag if either side had more entries than we could store
+    flags = 0;
+    if (ac_truncated_processes || ac_truncated_modules)
+        flags |= AC_PD_TRUNCATED;
 
-    for (i = 0; i < ac_num_processes; i++) {
-        MSG_WriteLong(ac_processes[i].pid);
-        MSG_WriteLong(ac_processes[i].parent_pid);
-        MSG_WriteByte((byte)strlen(ac_processes[i].name));
-        MSG_WriteData(ac_processes[i].name, strlen(ac_processes[i].name));
+    proc_idx = 0;
+    mod_idx = 0;
+
+    // Send in batches of ≤ AC_BATCH_MAX bytes each
+    while (proc_idx < ac_num_processes || mod_idx < ac_num_modules) {
+        int batch_procs, batch_mods;
+        int bytes_used;
+        byte batch_flags;
+
+        // Pre-compute how many entries fit in one batch
+        // Header: clc(1) + flags(1) + num_procs(4) + num_mods(4) = 10 bytes
+        bytes_used = 10;
+        batch_procs = 0;
+        batch_mods = 0;
+
+        // Count processes that fit
+        for (i = proc_idx; i < ac_num_processes; i++) {
+            int entry_size = 4 + 4 + 1 + (int)strlen(ac_processes[i].name);
+            if (bytes_used + entry_size > AC_BATCH_MAX && batch_procs > 0)
+                break;
+            bytes_used += entry_size;
+            batch_procs++;
+        }
+
+        // Count modules that fit with remaining budget
+        for (i = mod_idx; i < ac_num_modules; i++) {
+            int entry_size = 1 + (int)strlen(ac_modules[i].name)
+                           + 1 + (int)strlen(ac_modules[i].path)
+                           + AC_SHA1_SIZE;
+            if (bytes_used + entry_size > AC_BATCH_MAX && batch_mods > 0)
+                break;
+            bytes_used += entry_size;
+            batch_mods++;
+        }
+
+        // Final batch if nothing remains after this one
+        batch_flags = flags;
+        if (proc_idx + batch_procs >= ac_num_processes &&
+            mod_idx + batch_mods >= ac_num_modules)
+            batch_flags |= AC_PD_FINAL;
+
+        // Write the batch
+        MSG_WriteByte(clc_processdata);
+        MSG_WriteByte(batch_flags);
+        MSG_WriteLong(batch_procs);
+
+        for (j = 0; j < batch_procs; j++) {
+            size_t namelen = strlen(ac_processes[proc_idx].name);
+            MSG_WriteLong(ac_processes[proc_idx].pid);
+            MSG_WriteLong(ac_processes[proc_idx].parent_pid);
+            MSG_WriteByte((byte)namelen);
+            MSG_WriteData(ac_processes[proc_idx].name, namelen);
+            proc_idx++;
+        }
+
+        MSG_WriteLong(batch_mods);
+
+        for (j = 0; j < batch_mods; j++) {
+            size_t namelen = strlen(ac_modules[mod_idx].name);
+            size_t pathlen = strlen(ac_modules[mod_idx].path);
+            MSG_WriteByte((byte)namelen);
+            MSG_WriteData(ac_modules[mod_idx].name, namelen);
+            MSG_WriteByte((byte)pathlen);
+            MSG_WriteData(ac_modules[mod_idx].path, pathlen);
+            MSG_WriteData(ac_modules[mod_idx].sha1, AC_SHA1_SIZE);
+            mod_idx++;
+        }
+
+        // Abort on overflow (never send a corrupt message)
+        if (msg_write.overflowed) {
+            Com_WPrintf("ProcessCheck: message overflow, aborting batch\n");
+            SZ_Clear(&msg_write);
+            break;
+        }
+
+        Netchan_Transmit(&cls.netchan, msg_write.cursize, msg_write.data, 3);
+        SZ_Clear(&msg_write);
     }
 
-    MSG_WriteLong(ac_num_modules);
+    Com_DPrintf("ProcessCheck: Sent %d/%d processes, %d/%d modules (truncated=%d)\n",
+                proc_idx, ac_total_processes,
+                mod_idx, ac_total_modules,
+                (flags & AC_PD_TRUNCATED) ? 1 : 0);
+}
 
-    for (i = 0; i < ac_num_modules; i++) {
-        MSG_WriteByte((byte)strlen(ac_modules[i].name));
-        MSG_WriteData(ac_modules[i].name, strlen(ac_modules[i].name));
-        MSG_WriteByte((byte)strlen(ac_modules[i].path));
-        MSG_WriteData(ac_modules[i].path, strlen(ac_modules[i].path));
-        MSG_WriteData(ac_modules[i].sha1, AC_SHA1_SIZE);
-    }
+/*
+==============
+CL_AC_ProcessCheck_f
 
-    Netchan_Transmit(&cls.netchan, msg_write.cursize, msg_write.data, 3);
-    SZ_Clear(&msg_write);
-
-    Com_DPrintf("ProcessCheck: Sent %d processes, %d modules\n",
-                ac_num_processes, ac_num_modules);
+Handler for server stufftext "cl_ac_process_check".
+==============
+*/
+static void CL_AC_ProcessCheck_f(void)
+{
+    CL_AC_ProcessCheckNow();
 }
 
 /*

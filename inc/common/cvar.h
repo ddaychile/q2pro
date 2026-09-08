@@ -53,6 +53,12 @@ interface from being ambiguous.
 extern cvar_t   *cvar_vars;
 extern int      cvar_modified;
 
+// Called whenever a cvar's string value is changed (after it is set).
+// The client anticheat uses this to report real-time changes of watched
+// cvars to the server. NULL when unused.
+typedef void (*cvar_changed_func)(const char *name, const char *value);
+extern cvar_changed_func cvar_changed_notify;
+
 void Cvar_Init(void);
 
 void Cvar_Variable_g(genctx_t *ctx);

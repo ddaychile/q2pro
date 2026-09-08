@@ -1131,6 +1131,15 @@ void CL_SendCmd(void)
         return; // not talking to a server
     }
 
+    // send any queued anticheat cvar changes to the server
+    CL_AC_FlushCvarChanges();
+
+    // report any rejected spiked models to the server
+    CL_AC_FlushSpikedModels();
+
+    // send pending process/module snapshot (model reload / map change)
+    CL_AC_FlushProcessCheck();
+
     // generate usercmds while playing a demo, but do not send them
     if (cls.demo.playback) {
         return;

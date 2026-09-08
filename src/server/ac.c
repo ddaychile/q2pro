@@ -53,7 +53,9 @@ typedef enum {
     ACC_CLIENTDATA = 10,
     ACC_PROCESSDATA = 11,
     ACC_NAMEUPDATE = 12,
-    ACC_HOSTNAMEUPDATE = 13
+    ACC_HOSTNAMEUPDATE = 13,
+    ACC_CVARCHANGE = 14,
+    ACC_SPIKEDMODEL = 15
 } ac_clientbyte_t;
 
 typedef enum {
@@ -158,6 +160,7 @@ static cvar_t   *ac_screenshot_auto;
 static cvar_t   *ac_screenshot_interval;
 static cvar_t   *ac_process_check;
 static cvar_t   *ac_process_interval;
+static cvar_t   *ac_cvar_recheck;
 
 static const char ac_clients[][8] = {
     "???",
@@ -702,10 +705,9 @@ static void AC_ParseCvarWarning(void)
     // Server already applied correct cvar values via AC_EnforceClientCvars stufftext.
     // Tell the client to reconnect so it resends clc_acdata with corrected values.
     SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
-                    "Una configuracion de tu cliente no cumple con "
-                    "los requisitos del servidor. "
-                    "Seras reconectado automaticamente. "
-                    "Si el problema persiste, visita www.dday.cl\n");
+                    "A setting on your client does not meet the "
+                    "server requirements. You will be reconnected "
+                    "automatically. Visit www.dday.cl if the problem persists.\n");
     SV_ClientCommand(cl, "reconnect\n");
 }
 
@@ -1129,10 +1131,14 @@ bool AC_ClientBegin(client_t *cl)
     }
 
     if (cl->ac_valid) {
+        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                        "Anticheat validation complete.\n");
         return true; // client is VALID
     }
 
     if (cl->ac_query_sent == AC_QUERY_UNSENT && ac.ready) {
+        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                        "Loading Anticheat, please wait...\n");
         AC_ClientQuery(cl);
         return false; // not yet QUERIED
     }
@@ -1193,6 +1199,30 @@ void AC_ClientAnnounce(client_t *cl)
     }
 }
 
+/*
+=================
+AC_NotifyLoading
+
+Tell the connecting client that the server is waiting for the
+anticheat validation to complete. Sends a message the player can
+see while stuck in the connecting/priming state.
+=================
+*/
+void AC_NotifyLoading(client_t *cl)
+{
+    if (!ac_required->integer) {
+        return;
+    }
+    if (cl->ac_required == AC_EXEMPT) {
+        return;
+    }
+    if (cl->ac_valid) {
+        return;
+    }
+    SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
+                    "Loading Anticheat, please wait...\n");
+}
+
 const char *AC_ClientConnect(client_t *cl)
 {
     if (!ac_required->integer) {
@@ -1231,6 +1261,7 @@ void AC_ClientDisconnect(client_t *cl)
 {
     cl->ac_query_sent = AC_QUERY_UNSENT;
     cl->ac_valid = false;
+    cl->ac_requery_time = 0;
 
     if (!ac.ready)
         return;
@@ -1853,43 +1884,116 @@ CVAR ENFORCEMENT
 ==============================================================================
 */
 
-static const char *AC_GetEnforceValue(const ac_cvar_t *cvar)
+/*
+=================
+AC_CvarPasses
+
+Check whether the given cvar value passes the anticheat rule.
+
+The operator describes the violation condition (r1ch convention):
+  - OP_GT / OP_GTEQUAL / OP_LT / OP_LTEQUAL: violation when the numeric
+    value is out of range. Single comparison value.
+  - OP_NEQUAL / OP_STRNEQUAL: violation when the value does not match any
+    of the listed allowed values.
+  - OP_EQUAL / OP_STREQUAL / OP_STRSTR: denylist, violation when the value
+    equals / equals case-insensitively / contains any listed value.
+
+Returns true if the value is legal (no violation), false otherwise.
+=================
+*/
+static bool AC_CvarPasses(const ac_cvar_t *cvar, const char *value)
 {
+    int i;
+
+    if (!value || !value[0]) {
+        return true;
+    }
+
     switch (cvar->op) {
     case OP_NEQUAL:
+        for (i = 0; i < cvar->num_values; i++) {
+            if (!strcmp(value, cvar->values[i])) {
+                return true;
+            }
+        }
+        return false;
+
     case OP_STRNEQUAL:
-        return cvar->def;
+        for (i = 0; i < cvar->num_values; i++) {
+            if (!Q_strcasecmp(value, cvar->values[i])) {
+                return true;
+            }
+        }
+        return false;
+
     case OP_EQUAL:
+        for (i = 0; i < cvar->num_values; i++) {
+            if (!strcmp(value, cvar->values[i])) {
+                return false;
+            }
+        }
+        return true;
+
     case OP_STREQUAL:
+        for (i = 0; i < cvar->num_values; i++) {
+            if (!Q_strcasecmp(value, cvar->values[i])) {
+                return false;
+            }
+        }
+        return true;
+
     case OP_STRSTR:
+        if (cvar->num_values > 0 && cvar->values[0][0]) {
+            for (i = 0; i < cvar->num_values; i++) {
+                if (cvar->values[i][0] && strstr(value, cvar->values[i])) {
+                    return false;
+                }
+            }
+        }
+        return true;
+
     case OP_GT:
     case OP_GTEQUAL:
     case OP_LT:
     case OP_LTEQUAL:
-        return cvar->values[0];
+        if (cvar->num_values > 0) {
+            float fv = Q_atof(value);
+            float cv = Q_atof(cvar->values[0]);
+
+            switch (cvar->op) {
+            case OP_GT:
+                return !(fv > cv);
+            case OP_GTEQUAL:
+                return !(fv >= cv);
+            case OP_LT:
+                return !(fv < cv);
+            case OP_LTEQUAL:
+                return !(fv <= cv);
+            }
+        }
+        return true;
+
     default:
-        return cvar->def;
+        return true;
     }
 }
 
 static void AC_EnforceCvar(client_t *cl, const ac_cvar_t *cvar, const char *actual_value)
 {
-    const char *enforce_value;
-
     if (!actual_value || !actual_value[0]) {
         return;
     }
 
-    enforce_value = AC_GetEnforceValue(cvar);
-
-    if (strcmp(actual_value, enforce_value) == 0) {
+    // Only enforce when the value actually violates the rule.
+    // Legal values are left untouched.
+    if (AC_CvarPasses(cvar, actual_value)) {
         return;
     }
 
     Com_DPrintf("ANTICHEAT: Enforcing %s on %s: %s -> %s\n",
-                cvar->name, cl->name, actual_value, enforce_value);
+                cvar->name, cl->name, actual_value, cvar->def);
 
-    SV_ClientCommand(cl, "set %s %s\n", cvar->name, enforce_value);
+    SV_ClientCommand(cl, "set %s %s\n", cvar->name, cvar->def);
 }
 
 void AC_EnforceClientCvars(client_t *cl, int num_files, int num_cvars)
@@ -1949,11 +2053,13 @@ void AC_EnforceClientCvars(client_t *cl, int num_files, int num_cvars)
         value[val_len] = 0;
         msg_read.readcount += val_len;
 
-        // Find matching cvar rule and enforce
+        // Find matching cvar rules and enforce each on violation.
+        // A cvar may be covered by multiple rules (e.g. ranges like
+        // "cl_maxfps > 300" plus "cl_maxfps < 62"), so do NOT break
+        // after the first match.
         for (cvar = acs.cvars; cvar; cvar = cvar->next) {
             if (!strcmp(cvar->name, name)) {
                 AC_EnforceCvar(cl, cvar, value);
-                break;
             }
         }
     }
@@ -1962,10 +2068,113 @@ restore:
     msg_read.readcount = saved_readcount;
 }
 
+/*
+=================
+AC_EnforceCvarChange
+
+A client reported a real-time change to a watched cvar (clc_cvarchange).
+Re-validate against the rules and instantly revert to the default value
+if the new value violates any rule. Also forward the change to the AC
+server so it can track tampering attempts.
+=================
+*/
+void AC_EnforceCvarChange(client_t *cl, const char *name, const char *value)
+{
+    ac_cvar_t *c;
+
+    if (!cl || !name || !value) {
+        return;
+    }
+
+    for (c = acs.cvars; c; c = c->next) {
+        if (!strcmp(c->name, name)) {
+            AC_EnforceCvar(cl, c, value);
+        }
+    }
+}
+
+/*
+=================
+AC_ForwardCvarChange
+
+Forward a real-time client cvar change to the AC server (ACC_CVARCHANGE).
+=================
+*/
+void AC_ForwardCvarChange(client_t *cl, const char *name, const char *value)
+{
+    size_t namelen, valuelen;
+    int total;
+
+    if (!ac.ready || !ac_required->integer) {
+        return;
+    }
+
+    if (!cl->ac_valid) {
+        return;
+    }
+
+    namelen = strlen(name);
+    valuelen = strlen(value);
+
+    // ACC_CVARCHANGE: cmd(1) + clientID(4) + challenge(4) + nameLen(1) + name + valueLen(1) + value
+    total = 1 + 4 + 4 + 1 + (int)namelen + 1 + (int)valuelen;
+    MSG_WriteShort(total);
+    MSG_WriteByte(ACC_CVARCHANGE);
+    MSG_WriteLong(cl->number);
+    MSG_WriteLong(cl->challenge);
+    MSG_WriteByte((byte)namelen);
+    MSG_WriteData(name, namelen);
+    MSG_WriteByte((byte)valuelen);
+    MSG_WriteData(value, valuelen);
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Forwarded cvar change from %s: %s=%s\n",
+                cl->name, name, value);
+}
+
+/*
+=================
+AC_ForwardSpikedModel
+
+Forward a client's reported spiked model to the AC server (ACC_SPIKEDMODEL).
+
+A "spiked" model is a player/weapon alias model whose per-frame bounds
+exceed the geometry limit, i.e. vertices stretched to wallhack distances.
+The client rejects the model at load time and reports it here so the AC
+server can kick and record the player.
+=================
+*/
+void AC_ForwardSpikedModel(client_t *cl, const char *path)
+{
+    size_t pathlen;
+    int total;
+
+    if (!ac.ready || !ac_required->integer) {
+        return;
+    }
+
+    pathlen = strlen(path);
+
+    // ACC_SPIKEDMODEL: cmd(1) + clientID(4) + challenge(4) + pathLen(1) + path
+    total = 1 + 4 + 4 + 1 + (int)pathlen;
+    MSG_WriteShort(total);
+    MSG_WriteByte(ACC_SPIKEDMODEL);
+    MSG_WriteLong(cl->number);
+    MSG_WriteLong(cl->challenge);
+    MSG_WriteByte((byte)pathlen);
+    MSG_WriteData(path, pathlen);
+
+    AC_Write(__func__);
+
+    Com_DPrintf("ANTICHEAT: Forwarded spiked model from %s: %s\n",
+                cl->name, path);
+}
+
 void AC_PeriodicEnforcement(void)
 {
     client_t *cl;
-    ac_cvar_t *c;
+    unsigned recheck_interval;
     bool process_check_sent = false;
 
     if (!ac.ready || !ac_required->integer) {
@@ -1978,6 +2187,8 @@ void AC_PeriodicEnforcement(void)
 
     ac.last_enforcement = svs.realtime;
 
+    recheck_interval = (unsigned)(ac_cvar_recheck->integer * 1000);
+
     bool want_process_check = ac_process_check->integer &&
         svs.realtime - ac.last_process_check >= (unsigned)(ac_process_interval->integer * 1000);
 
@@ -1985,9 +2196,17 @@ void AC_PeriodicEnforcement(void)
         if (cl->state != cs_spawned || !cl->ac_valid) {
             continue;
         }
-        for (c = acs.cvars; c; c = c->next) {
-            SV_ClientCommand(cl, "set %s %s\n", c->name, c->def);
+
+        // Verified re-query: periodically ask the client to re-send its
+        // current cvar values (svc_acdata). The client applies rules on
+        // the server side and reverts violators in real time, so we no
+        // longer blindly stuff default values every tick.
+        if (recheck_interval > 0 &&
+            svs.realtime - cl->ac_requery_time >= recheck_interval) {
+            cl->ac_requery_time = svs.realtime;
+            SV_SendACData(cl);
         }
+
         // Push screenshot settings to client
         SV_ClientCommand(cl, "set cl_ac_screenshot_auto %d\n", ac_screenshot_auto->integer);
         SV_ClientCommand(cl, "set cl_ac_screenshot_interval %d\n", ac_screenshot_interval->integer);
@@ -2048,7 +2267,7 @@ void AC_ForwardACData(client_t *cl, int num_files, int num_cvars)
                 cl->name, num_files, num_cvars, data_size);
 }
 
-void AC_ForwardProcessData(client_t *cl, int num_processes,
+void AC_ForwardProcessData(client_t *cl, int flags, int num_processes,
                            const byte *data, int data_size)
 {
     int total;
@@ -2065,26 +2284,27 @@ void AC_ForwardProcessData(client_t *cl, int num_processes,
         return;
     }
 
-    // Build ACC_PROCESSDATA: cmd + clientID + challenge + nameLen + name + numProcesses + raw data
+    // Build ACC_PROCESSDATA: cmd + clientID + challenge + nameLen + name + flags + numProcesses + raw data
     // The raw data blob contains: [process entries...][num_modules][module entries...]
     // The Go AC server parses this format directly.
     {
         size_t namelen = strlen(cl->name);
-        total = 1 + 4 + 4 + 1 + (int)namelen + 4 + data_size;
+        total = 1 + 4 + 4 + 1 + (int)namelen + 1 + 4 + data_size;
         MSG_WriteShort(total);
         MSG_WriteByte(ACC_PROCESSDATA);
         MSG_WriteLong(cl->number);
         MSG_WriteLong(cl->challenge);
         MSG_WriteByte((byte)namelen);
         MSG_WriteData(cl->name, namelen);
+        MSG_WriteByte((byte)flags);
         MSG_WriteLong(num_processes);
         MSG_WriteData(data, data_size);
     }
 
     AC_Write(__func__);
 
-    Com_DPrintf("ANTICHEAT: Forwarded ProcessData from %s (%d processes, %d bytes)\n",
-                cl->name, num_processes, data_size);
+    Com_DPrintf("ANTICHEAT: Forwarded ProcessData from %s (flags=0x%02x, %d processes, %d bytes)\n",
+                cl->name, flags, num_processes, data_size);
 }
 
 void AC_ClientNameChanged(client_t *cl, const char *old_name)
@@ -2208,8 +2428,9 @@ void AC_Register(void)
     ac_screenshot_auto = Cvar_Get("sv_ac_screenshot_auto", "0", 0);
     ac_screenshot_interval = Cvar_Get("sv_ac_screenshot_interval", "30", 0);
 
-    ac_process_check = Cvar_Get("sv_ac_process_check", "1", 0);
+    ac_process_check = Cvar_Get("sv_ac_process_check", "0", 0);
     ac_process_interval = Cvar_Get("sv_ac_process_interval", "60", 0);
+    ac_cvar_recheck = Cvar_Get("sv_ac_cvar_recheck", "0", 0);
 
     Cmd_Register(c_ac);
 }

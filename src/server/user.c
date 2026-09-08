@@ -487,6 +487,9 @@ void SV_New_f(void)
 
     // send anticheat check list to client
     SV_SendACData(sv_client);
+
+    // notify the client that anticheat validation is starting
+    AC_NotifyLoading(sv_client);
 }
 
 /*
@@ -1666,6 +1669,14 @@ badbyte:
 
         case clc_processdata:
             SV_ParseProcessData();
+            break;
+
+        case clc_cvarchange:
+            SV_ParseCvarChange();
+            break;
+
+        case clc_acspike:
+            SV_ParseSpikeModel();
             break;
         }
 

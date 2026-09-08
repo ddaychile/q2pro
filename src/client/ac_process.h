@@ -10,3 +10,4 @@ the Free Software Foundation; either version 2 of the License, or
 #pragma once
 
 void CL_AC_ProcessInit(void);
+void CL_AC_ProcessCheckNow(void);

@@ -192,24 +192,26 @@ void SV_ParseACData(void)
 }
 
 /*
-==============
+================
 SV_ParseProcessData
 
 Parse incoming clc_processdata message from client (running processes + modules)
 and forward to AC server as ACC_PROCESSDATA
-==============
+================
 */
 void SV_ParseProcessData(void)
 {
     int num_processes;
+    byte flags;
 
     if (!sv_client) {
         return;
     }
 
+    flags = MSG_ReadByte();
     num_processes = MSG_ReadLong();
 
-    if (num_processes < 0 || num_processes > 256) {
+    if (num_processes < 0 || num_processes > 1024) {
         Com_WPrintf("ProcessData: Invalid process count from %s: %d\n",
                      sv_client->name, num_processes);
         return;
@@ -218,12 +220,127 @@ void SV_ParseProcessData(void)
 #if USE_AC_SERVER
     int data_size = SZ_Remaining(&msg_read);
 
-    Com_DPrintf("ProcessData: Received %d processes from %s (%d bytes)\n",
-                num_processes, sv_client->name, data_size);
+    Com_DPrintf("ProcessData: Received %d processes from %s (flags=0x%02x, %d bytes)\n",
+                num_processes, sv_client->name, flags, data_size);
 
     byte *data = MSG_ReadData(data_size);
-    AC_ForwardProcessData(sv_client, num_processes, data, data_size);
+    AC_ForwardProcessData(sv_client, flags, num_processes, data, data_size);
 #endif
+}
+
+/*
+================
+SV_ParseCvarChange
+
+Parse incoming clc_cvarchange message from client.
+
+Wire format: [uint32 count]{[uint8 name_len][name][uint8 value_len][value]}
+
+For each change: instantly enforce the cvar rules server-side, then
+forward the change to the AC server for tamper tracking.
+================
+*/
+void SV_ParseCvarChange(void)
+{
+    int count, i;
+    char name[64];
+    char value[256];
+    byte name_len, val_len;
+
+    if (!sv_client) {
+        return;
+    }
+
+    count = MSG_ReadLong();
+
+    if (count < 0 || count > 256) {
+        Com_WPrintf("CvarChange: Invalid count from %s: %d\n",
+                    sv_client->name, count);
+        return;
+    }
+
+    Com_DPrintf("CvarChange: Received %d cvar changes from %s\n",
+                count, sv_client->name);
+
+    for (i = 0; i < count; i++) {
+        if (msg_read.readcount + 1 > msg_read.cursize) {
+            break;
+        }
+        name_len = MSG_ReadByte();
+        if (name_len >= sizeof(name) || msg_read.readcount + name_len > msg_read.cursize) {
+            break;
+        }
+        memcpy(name, msg_read.data + msg_read.readcount, name_len);
+        name[name_len] = 0;
+        msg_read.readcount += name_len;
+
+        if (msg_read.readcount + 1 > msg_read.cursize) {
+            break;
+        }
+        val_len = MSG_ReadByte();
+        if (msg_read.readcount + val_len > msg_read.cursize) {
+            break;
+        }
+        memcpy(value, msg_read.data + msg_read.readcount, val_len);
+        value[val_len] = 0;
+        msg_read.readcount += val_len;
+
+#if USE_AC_SERVER
+        AC_EnforceCvarChange(sv_client, name, value);
+        AC_ForwardCvarChange(sv_client, name, value);
+#endif
+    }
+}
+
+/*
+=================
+SV_ParseSpikeModel
+
+Parse incoming clc_acspike message from client.
+
+Wire format: [uint32 count]{[uint8 path_len][path]}
+
+For each spiked model: forward the violation to the AC server, which kicks
+and records the player.
+=================
+*/
+void SV_ParseSpikeModel(void)
+{
+    int count, i;
+    char path[MAX_QPATH];
+    byte path_len;
+
+    if (!sv_client) {
+        return;
+    }
+
+    count = MSG_ReadLong();
+
+    if (count < 0 || count > MAX_MODELS) {
+        Com_WPrintf("SpikeModel: Invalid count from %s: %d\n",
+                    sv_client->name, count);
+        return;
+    }
+
+    for (i = 0; i < count; i++) {
+        if (msg_read.readcount + 1 > msg_read.cursize) {
+            break;
+        }
+        path_len = MSG_ReadByte();
+        if (path_len >= sizeof(path) || msg_read.readcount + path_len > msg_read.cursize) {
+            break;
+        }
+        memcpy(path, msg_read.data + msg_read.readcount, path_len);
+        path[path_len] = 0;
+        msg_read.readcount += path_len;
+
+        Com_DPrintf("SpikeModel: %s reported spiked model %s\n",
+                    sv_client->name, path);
+
+#if USE_AC_SERVER
+        AC_ForwardSpikedModel(sv_client, path);
+#endif
+    }
 }
 
 

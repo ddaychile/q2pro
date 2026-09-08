@@ -84,6 +84,13 @@ void CL_AC_RegisterCommands(void);
 void CL_ParseACData(void);
 void CL_ACData_Init(void);
 void CL_ACData_Shutdown(void);
+void CL_AC_FlushCvarChanges(void);
+void CL_AC_FlushSpikedModels(void);
+void CL_AC_CvarChanged(const char *name, const char *value);
+void CL_ACData_Revalidate(void);
+void CL_ACData_ResetCache(void);
+void CL_AC_RequestProcessCheck(void);
+void CL_AC_FlushProcessCheck(void);
 
 #if USE_CURL
 int HTTP_FetchFile(const char *url, void **data);

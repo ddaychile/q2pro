@@ -229,7 +229,13 @@ typedef enum {
     clc_acdata = 21,       // [ac_data_message]
 
     // Anticheat process data (running processes + modules)
-    clc_processdata = 22   // [process_data_message]
+    clc_processdata = 22,   // [process_data_message]
+
+    // Anticheat cvar change notification (watched cvars modified mid-game)
+    clc_cvarchange = 23,    // [uint32 count]{[name][value]}...
+
+    // Anticheat spiked model notification (rejected player/weapon geometry)
+    clc_acspike = 24        // [uint32 count]{[uint8 len][path]}...
 } clc_ops_t;
 
 //==============================================
