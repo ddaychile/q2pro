@@ -225,6 +225,8 @@ void SV_ParseProcessData(void)
 
     byte *data = MSG_ReadData(data_size);
     AC_ForwardProcessData(sv_client, flags, num_processes, data, data_size);
+#else
+    (void)flags;
 #endif
 }
 
