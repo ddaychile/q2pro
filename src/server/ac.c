@@ -1969,6 +1969,8 @@ static bool AC_CvarPasses(const ac_cvar_t *cvar, const char *value)
                 return !(fv < cv);
             case OP_LTEQUAL:
                 return !(fv <= cv);
+            default:
+                break;
             }
         }
         return true;
