@@ -1,0 +1,38 @@
+app-id: org.q2pro.q2pro
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: q2pro
+
+finish-args:
+  - --share=ipc
+  - --socket=x11
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  - --share=network
+  - --filesystem=home
+
+modules:
+  - name: q2pro
+    buildsystem: meson
+    config-opts:
+      - --prefix=/app
+      - --buildtype=release
+      - -Dsystem-wide=true
+      - -Dsdl2=enabled
+      - -Dopenal=enabled
+      - -Dlibpng=enabled
+      - -Dlibjpeg=enabled
+      - -Dlibcurl=enabled
+      - -Davcodec=enabled
+      - -Dx11=enabled
+      - -Dwayland=enabled
+      - -Dclient-gtv=true
+      - -Danticheat-server=true
+      - -Dmvd-server=true
+      - -Dmvd-client=true
+      - -Dsave-games=true
+    sources:
+      - type: dir
+        path: ../

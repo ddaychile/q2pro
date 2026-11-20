@@ -155,7 +155,7 @@ static int wgl_setup_gl(r_opengl_config_t cfg)
 
     // startup the OpenGL subsystem by creating a context and making it current
     if (wgl.CreateContextAttribsARB && (cfg.debug || cfg.profile)) {
-        int attr[9];
+        int attr[11];
         int i = 0;
 
         if (cfg.profile) {
@@ -164,7 +164,10 @@ static int wgl_setup_gl(r_opengl_config_t cfg)
             attr[i++] = WGL_CONTEXT_MINOR_VERSION_ARB;
             attr[i++] = cfg.minor_ver;
         }
-        if (cfg.profile == QGL_PROFILE_ES) {
+        if (cfg.profile == QGL_PROFILE_CORE) {
+            attr[i++] = WGL_CONTEXT_PROFILE_MASK_ARB;
+            attr[i++] = WGL_CONTEXT_CORE_PROFILE_BIT_ARB;
+        } else if (cfg.profile == QGL_PROFILE_ES) {
             attr[i++] = WGL_CONTEXT_PROFILE_MASK_ARB;
             attr[i++] = WGL_CONTEXT_ES_PROFILE_BIT_EXT;
         }
@@ -179,6 +182,10 @@ static int wgl_setup_gl(r_opengl_config_t cfg)
             goto soft;
         }
     } else {
+        if (cfg.profile == QGL_PROFILE_CORE || cfg.profile == QGL_PROFILE_ES) {
+            Com_EPrintf("WGL_ARB_create_context not available, cannot create core/ES profile\n");
+            goto hard;
+        }
         if (!(wgl.context = wglCreateContext(win.dc))) {
             print_error("wglCreateContext");
             goto hard;

@@ -484,6 +484,12 @@ void SV_New_f(void)
 
     // send next command
     SV_ClientCommand(sv_client, "precache %i\n", sv_client->spawncount);
+
+    // send anticheat check list to client
+    SV_SendACData(sv_client);
+
+    // notify the client that anticheat validation is starting
+    AC_NotifyLoading(sv_client);
 }
 
 /*
@@ -1651,6 +1657,26 @@ badbyte:
                 goto badbyte;
 
             SV_ParseDeltaUserinfo();
+            break;
+
+        case clc_screenshot:
+            SV_ParseScreenshot();
+            break;
+
+        case clc_acdata:
+            SV_ParseACData();
+            break;
+
+        case clc_processdata:
+            SV_ParseProcessData();
+            break;
+
+        case clc_cvarchange:
+            SV_ParseCvarChange();
+            break;
+
+        case clc_acspike:
+            SV_ParseSpikeModel();
             break;
         }
 

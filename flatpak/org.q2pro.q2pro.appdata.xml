@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.q2pro.q2pro</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0-or-later</project_license>
+  <name>Q2Pro</name>
+  <summary>Enhanced Quake 2 client and server</summary>
+  <description>
+    <p>
+      Q2Pro is an enhanced Quake 2 client and server with modern features
+      including improved rendering, networking, and protocol extensions.
+      It is compatible with standard Quake 2 servers and supports modern
+      display servers like Wayland.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/pistolero/q2pro</url>
+  <url type="bugtracker">https://github.com/pistolero/q2pro/issues</url>
+  <developer id="org.q2pro">
+    <name>Q2Pro Contributors</name>
+  </developer>
+  <categories>
+    <category>Game</category>
+    <category>Shooter</category>
+  </categories>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">moderate</content_attribute>
+    <content_attribute id="violence-blood">moderate</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="0" date="2026-01-01">
+      <description>
+        <p>Initial Flatpak release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

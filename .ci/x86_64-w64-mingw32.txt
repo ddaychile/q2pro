@@ -7,6 +7,10 @@ windres = 'x86_64-w64-mingw32-windres'
 nasm = 'nasm'
 pkg-config = 'pkg-config'
 
+[built-in options]
+c_args = ['-I/usr/x86_64-w64-mingw32/include']
+cpp_args = ['-I/usr/x86_64-w64-mingw32/include']
+
 [host_machine]
 system = 'windows'
 cpu_family = 'x86_64'

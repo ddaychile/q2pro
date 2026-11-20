@@ -205,6 +205,8 @@ void    R_Shutdown(bool total);
 // slash will not use the "pics/" prefix or the ".pcx" postfix)
 void    R_BeginRegistration(const char *map);
 qhandle_t R_RegisterModel(const char *name);
+bool    MOD_GetSpikedModel(char *buf, size_t size);
+bool    MOD_GetModelsReloaded(void);
 qhandle_t R_RegisterImage(const char *name, imagetype_t type,
                           imageflags_t flags);
 void    R_SetSky(const char *name, float rotate, bool autorotate, const vec3_t axis);
@@ -245,3 +247,22 @@ void    R_ModeChanged(int width, int height, int flags);
 bool    R_VideoSync(void);
 
 r_opengl_config_t R_GetGLConfig(void);
+
+// Anticheat screenshot support
+typedef struct screenshot_s screenshot_t;
+typedef int (*save_cb_t)(const screenshot_t *);
+
+struct screenshot_s {
+    save_cb_t save_cb;
+    byte *pixels;
+    FILE *fp;
+    char *filename;
+    int width, height, rowbytes, bpp, status, param;
+    bool async;
+};
+
+int     IMG_ReadPixels(screenshot_t *s);
+int     IMG_CompressJPEG(const screenshot_t *s, byte **out, size_t *out_size, int quality);
+int     IMG_CompressJPEG_AC(const screenshot_t *s, byte **out, size_t *out_size, int quality);
+int     IMG_CompressWebP_AC(const screenshot_t *s, byte **out, size_t *out_size, int quality);
+int     IMG_Downscale(screenshot_t *dst, const screenshot_t *src, int new_width, int new_height);

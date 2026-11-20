@@ -1458,8 +1458,8 @@ r_opengl_config_t R_GetGLConfig(void)
             cfg.major_ver = major;
             cfg.minor_ver = minor;
         } else if (cfg.profile == QGL_PROFILE_CORE) {
-            cfg.major_ver = 3;
-            cfg.minor_ver = 2;
+            cfg.major_ver = 4;
+            cfg.minor_ver = 5;
         } else if (cfg.profile == QGL_PROFILE_ES) {
             cfg.major_ver = 3;
             cfg.minor_ver = 0;

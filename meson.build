@@ -1,9 +1,10 @@
-project('q2pro', 'c',
+project('q2pro', ['c', 'cpp'],
   license: 'GPL-2.0-or-later',
   version: run_command(find_program('python3'), 'version.py', check: true).stdout().strip(),
   meson_version: '>= 0.59.0',
   default_options: [
     'c_std=c11',
+    'cpp_std=c++11',
     'buildtype=debugoptimized',
   ],
 )
@@ -52,6 +53,9 @@ client_src = [
   'src/client/predict.c',
   'src/client/refresh.c',
   'src/client/screen.c',
+  'src/client/screenshot_ac.c',
+  'src/client/ac_data.c',
+  'src/client/ac_process.c',
   'src/client/sound/main.c',
   'src/client/sound/mem.c',
   'src/client/tent.c',
@@ -65,6 +69,7 @@ client_src = [
   'src/server/send.c',
   'src/server/user.c',
   'src/server/world.c',
+  'src/server/sv_screenshot.c',
   'src/shared/m_flash.c',
 ]
 
@@ -106,6 +111,7 @@ server_src = [
   'src/server/send.c',
   'src/server/user.c',
   'src/server/world.c',
+  'src/server/sv_screenshot.c',
 ]
 
 game_src = [
@@ -211,6 +217,10 @@ endif
 common_link_args = []
 exe_link_args = []
 dll_link_args = []
+
+if host_machine.system() == 'darwin'
+  common_args += '-fno-common'
+endif
 
 if cc.get_argument_syntax() == 'gcc'
   if x86
@@ -320,6 +330,16 @@ if jpeg.found()
   endif
 endif
 
+webp = dependency('libwebp',
+  required:        get_option('libwebp'),
+  default_options: fallback_opt,
+  fallback:        ['libwebp', 'libwebp'],
+)
+if webp.found()
+  client_deps += webp
+  config.set10('USE_WEBP', true)
+endif
+
 if get_option('tga')
   texture_formats += 'tga'
 endif
@@ -333,6 +353,87 @@ if openal.found()
   client_src += [ 'src/client/sound/al.c', 'src/client/sound/qal.c' ]
   client_deps += openal.partial_dependency(compile_args: true, includes: true)
   config.set10('USE_OPENAL', true)
+endif
+
+# Discord Game SDK (C++ bindings)
+discord_opt = get_option('discord')
+discord_inc = include_directories('Discord/c', 'Discord/cpp')
+discord_cpp_sources = [
+  'Discord/cpp/core.cpp',
+  'Discord/cpp/activity_manager.cpp',
+  'Discord/cpp/overlay_manager.cpp',
+  'Discord/cpp/user_manager.cpp',
+  'Discord/cpp/relationship_manager.cpp',
+  'Discord/cpp/lobby_manager.cpp',
+  'Discord/cpp/network_manager.cpp',
+  'Discord/cpp/application_manager.cpp',
+  'Discord/cpp/image_manager.cpp',
+  'Discord/cpp/storage_manager.cpp',
+  'Discord/cpp/store_manager.cpp',
+  'Discord/cpp/voice_manager.cpp',
+  'Discord/cpp/achievement_manager.cpp',
+  'Discord/cpp/types.cpp',
+  'src/client/discord_wrapper.cpp',
+]
+
+discord_link_args = []
+discord_sdk_dir = meson.current_source_dir() / 'Discord' / 'lib'
+if host_machine.system() == 'windows'
+  if host_machine.cpu_family() == 'x86_64'
+    discord_link_args = [discord_sdk_dir / 'x86_64' / 'discord_game_sdk.dll.lib']
+  else
+    discord_link_args = [discord_sdk_dir / 'x86' / 'discord_game_sdk.dll.lib']
+  endif
+elif host_machine.system() == 'darwin'
+  if host_machine.cpu_family() == 'aarch64'
+    discord_sdk_arch = 'aarch64'
+  else
+    discord_sdk_arch = 'x86_64'
+  endif
+  discord_link_args = ['-Wl,-rpath,@loader_path',
+                       discord_sdk_dir / discord_sdk_arch / 'discord_game_sdk.dylib']
+elif host_machine.system() == 'linux'
+  discord_link_args = ['-Wl,-rpath,$ORIGIN',
+                       discord_sdk_dir / 'x86_64' / 'discord_game_sdk.so']
+endif
+
+discord_cpp_args = []
+if cc.get_id() != 'msvc'
+  discord_cpp_args += ['-std=c++11']
+endif
+discord_cpp_args += ['-include', 'stdint.h', '-include', 'cstdint']
+
+# For MinGW cross-compilation on case-sensitive Linux, Discord SDK's ffi.h
+# includes <Windows.h> but MinGW only provides <windows.h> (lowercase).
+# Create a wrapper header to bridge the case mismatch.
+# Also need -fpermissive for MinGW's stricter lambda-to-function-pointer conversion.
+if host_machine.system() == 'windows' and cc.get_id() != 'msvc'
+  compat_dir = meson.project_build_root() / 'compat-headers'
+  run_command(find_program('python3'), '-c',
+    'import os, sys; d=sys.argv[1]; os.makedirs(d, exist_ok=True); ' +
+    'f=os.path.join(d, "Windows.h"); ' +
+    'open(f, "w").write("#include <windows.h>\\n") if not os.path.exists(f) else None',
+    compat_dir,
+    check: true)
+  discord_cpp_args += ['-I' + compat_dir, '-fpermissive', '-Wno-error']
+endif
+
+discord_lib = static_library('discord_game_sdk_glue',
+  discord_cpp_sources,
+  include_directories: discord_inc,
+  gnu_symbol_visibility: 'hidden',
+  cpp_args: discord_cpp_args,
+)
+
+discord_sdk_dep = declare_dependency(
+  include_directories: discord_inc,
+  link_with: discord_lib,
+  link_args: discord_link_args,
+)
+
+if discord_opt.enabled()
+  config.set10('USE_DISCORD', true)
+  client_deps += discord_sdk_dep
 endif
 
 # require FFmpeg >= 5.1.3
@@ -480,7 +581,7 @@ config.set10('USE_TGA',           get_option('tga'))
 config.set10('USE_' + host_machine.endian().to_upper() + '_ENDIAN', true)
 
 if host_machine.system() == 'darwin'
-  config.set_quoted('DEFGLPROFILE', 'gl3.2')
+  config.set_quoted('DEFGLPROFILE', 'gl4.5')
 elif get_option('opengl-es1')
   config.set_quoted('DEFGLPROFILE', 'es1')
 else
@@ -509,6 +610,7 @@ summary({
   'client-gtv'         : config.get('USE_CLIENT_GTV', 0) != 0,
   'client-ui'          : config.get('USE_UI', 0) != 0,
   'debug'              : config.get('USE_DEBUG', 0) != 0,
+  'discord'            : config.get('USE_DISCORD', 0) != 0,
   'game-abi-hack'      : config.get('USE_GAME_ABI_HACK', 0) != 0,
   'game-new-api'       : config.get('USE_NEW_GAME_API', 0) != 0,
   'icmp-errors'        : config.get('USE_ICMP', 0) != 0,
