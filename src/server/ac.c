@@ -1137,8 +1137,8 @@ bool AC_ClientBegin(client_t *cl)
     }
 
     if (cl->ac_query_sent == AC_QUERY_UNSENT && ac.ready) {
-        SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
-                        "Loading Anticheat, please wait...\n");
+        SV_ClientPrintf(cl, PRINT_HIGH,
+                        "Cargando anticheat, espera un momento...\n");
         AC_ClientQuery(cl);
         return false; // not yet QUERIED
     }
@@ -1219,8 +1219,8 @@ void AC_NotifyLoading(client_t *cl)
     if (cl->ac_valid) {
         return;
     }
-    SV_ClientPrintf(cl, PRINT_HIGH, AC_MESSAGE
-                    "Loading Anticheat, please wait...\n");
+    SV_ClientPrintf(cl, PRINT_HIGH,
+                    "Cargando anticheat, espera un momento...\n");
 }
 
 const char *AC_ClientConnect(client_t *cl)
@@ -1254,6 +1254,10 @@ const char *AC_ClientConnect(client_t *cl)
         AC_Write(__func__);
     }
 
+    // tell the client how strictly anticheat is enforced:
+    // ac=1 -> anticheat is in use, ac=2 -> anticheat is required
+    if (cl->ac_required == AC_REQUIRED)
+        return " ac=2";
     return " ac=1";
 }
 
@@ -2376,6 +2380,14 @@ void SV_SendACData(client_t *cl)
         return;
     }
 
+    // only send the check list to clients that speak the anticheat
+    // protocol. older clients don't know svc_acdata and would die with
+    // "illegible server message"
+    if (cl->protocol != PROTOCOL_VERSION_Q2PRO ||
+        cl->version < PROTOCOL_VERSION_Q2PRO_AC_DATA) {
+        return;
+    }
+
     MSG_WriteByte(svc_acdata);
     MSG_WriteLong(acs.num_files);
     MSG_WriteLong(acs.num_cvars);
@@ -2416,9 +2428,9 @@ void AC_Register(void)
     ac_server_address = Cvar_Get("sv_anticheat_server_address", "ac.dday.cl:27915", CVAR_LATCH);
     ac_error_action = Cvar_Get("sv_anticheat_error_action", "0", 0);
     ac_message = Cvar_Get("sv_anticheat_message",
-                          "Este servidor requiere anticheat. "
-                          "Tu cliente no cumple los requisitos. "
-                          "Visita www.dday.cl para mas informacion.", 0);
+                          "Este servidor requiere anticheat para conectarse.\n"
+                          "Tu cliente no tiene el anticheat o esta desactualizado.\n"
+                          "Visita www.dday.cl para obtener la ultima version.", 0);
     ac_badfile_action = Cvar_Get("sv_anticheat_badfile_action", "0", 0);
     ac_badfile_message = Cvar_Get("sv_anticheat_badfile_message", "", 0);
     ac_badfile_max = Cvar_Get("sv_anticheat_badfile_max", "0", 0);

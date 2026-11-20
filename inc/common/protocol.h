@@ -52,7 +52,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define PROTOCOL_VERSION_Q2PRO_EXTENDED_LIMITS      1024    // r2894
 #define PROTOCOL_VERSION_Q2PRO_EXTENDED_LIMITS_2    1025    // r3300
 #define PROTOCOL_VERSION_Q2PRO_PLAYERFOG            1026    // r3579
-#define PROTOCOL_VERSION_Q2PRO_CURRENT              1026    // r3579
+#define PROTOCOL_VERSION_Q2PRO_AC_DATA              1027    // anticheat check list
+#define PROTOCOL_VERSION_Q2PRO_CURRENT              1027    // anticheat check list
 
 #define PROTOCOL_VERSION_MVD_MINIMUM            2009    // r168
 #define PROTOCOL_VERSION_MVD_DEFAULT            2010    // r177

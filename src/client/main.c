@@ -1403,8 +1403,7 @@ static void CL_ConnectionlessPacket(void)
         }
 #else
         if (anticheat >= 2) {
-            Com_Printf("Anticheat required by server, "
-                       "but no anticheat support linked in.\n");
+            Com_Printf("Este servidor requiere anticheat para conectarse.\n");
         }
 #endif
 
