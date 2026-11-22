@@ -146,16 +146,27 @@ jobs:
             builddir/game*.so
             builddir/discord_game_sdk.so
 
+  # Q2Pro.app: a self-contained bundle. Homebrew dylibs are copied into
+  # Contents/Frameworks by dylibbundler, the Discord SDK is copied in by hand,
+  # and the build fails if any /usr/local, /opt/homebrew or @rpath reference leaks.
   macos:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos' }}
-    runs-on: ${{ matrix.arch == 'x86_64' && 'macos-15-intel' || 'macos-latest' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
     strategy:
       matrix:
-        arch: [x86_64, arm64]
+        include:
+          - arch: arm64
+            runner: macos-latest
+            discord_dir: aarch64
+          - arch: x86_64
+            runner: macos-15-intel
+            discord_dir: x86_64
     steps:
       - uses: actions/checkout@v4
-      # Intel: Homebrew has no bottles for this runner, so ~21 formulae
-      # (incl. ffmpeg) compile from source (~1h). Cache the installed kegs.
+
+      # Intel: Homebrew has no bottles for this runner, so the dependencies
+      # compile from source (~1h). Cache the installed kegs between runs.
       - name: Restore Homebrew cache (x86_64)
         if: matrix.arch == 'x86_64'
         uses: actions/cache@v4
@@ -163,76 +174,167 @@ jobs:
           path: |
             /usr/local/Cellar
             /usr/local/opt
-          key: brew-x86_64-${{ github.run_id }}
+          key: brew-app-x86_64-${{ github.run_id }}
           restore-keys: |
-            brew-x86_64-
+            brew-app-x86_64-
+
       - name: Install dependencies
         run: |
           brew update
-          brew install meson sdl2 openal-soft libpng jpeg-turbo ffmpeg webp
-          # Restored kegs (cache) may lack their bin/lib/pkgconfig links; relink them.
+          brew install meson cmake pkg-config openal-soft ffmpeg jpeg-turbo webp dylibbundler
+          # Restored kegs may lack their bin/lib/pkgconfig links; relink them.
           for f in $(brew list --formula); do brew link --overwrite "$f" >/dev/null 2>&1 || true; done
-          which meson
-      - name: Build ${{ matrix.arch }}
+
+      # Homebrew's sdl2 is sdl2-compat, which loads SDL3 at runtime and cannot be bundled.
+      - name: Build SDL2 from source
         run: |
-          # Homebrew prefix differs per arch (/opt/homebrew on arm64, /usr/local on x86_64)
-          export PKG_CONFIG_PATH="$(brew --prefix openal-soft)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-          meson setup \
-            --cross-file=.ci/macos-${{ matrix.arch }}.txt \
-            ${{ env.MESON_ARGS }} \
-            ${{ env.MESON_ARGS_MACOS }} \
+          SDLV=2.32.10
+          curl -fsSL https://github.com/libsdl-org/SDL/releases/download/release-$SDLV/SDL2-$SDLV.tar.gz | tar xz
+          cmake -S SDL2-$SDLV -B sdl2-build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$HOME/sdl2" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DSDL_STATIC=OFF -DSDL_TEST=OFF
+          cmake --build sdl2-build -j4
+          cmake --install sdl2-build
+          # Absolute install name so dylibbundler can resolve it.
+          install_name_tool -id "$HOME/sdl2/lib/libSDL2-2.0.0.dylib" "$HOME/sdl2/lib/libSDL2-2.0.0.dylib"
+
+      - name: Build
+        run: |
+          export PKG_CONFIG_PATH="$HOME/sdl2/lib/pkgconfig:$(brew --prefix openal-soft)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+          # libpng is built statically from its wrap so the bundle does not carry
+          # a Homebrew libpng. Later -D options override the ones in MESON_ARGS_MACOS.
+          # -Dwerror=false: the linker treats version-mismatch warnings from Homebrew dylibs as fatal.
+          meson setup --cross-file=.ci/macos-${{ matrix.arch }}.txt \
+            ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_MACOS }} \
+            -Dwerror=false -Dwrap_mode=default --force-fallback-for=libpng \
             builddir-${{ matrix.arch }}
           meson compile -C builddir-${{ matrix.arch }}
-      - name: Upload per-arch artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-macos-${{ matrix.arch }}
-          path: |
-            builddir-${{ matrix.arch }}/q2pro
-            builddir-${{ matrix.arch }}/q2proded
-            builddir-${{ matrix.arch }}/game*.dylib
 
+      - name: Assemble Q2Pro.app
+        run: |
+          B=builddir-${{ matrix.arch }}
+          APP=Q2Pro.app
+          mkdir -p "$APP/Contents/MacOS/baseq2" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
+          cp "$B/q2pro" "$B/q2proded" "$APP/Contents/MacOS/"
+          cp "$B"/game*.dylib "$APP/Contents/MacOS/baseq2/"
+          cp .ci/mac/Info.plist "$APP/Contents/Info.plist"
+          install -m 0755 .ci/mac/q2pro-launcher "$APP/Contents/MacOS/q2pro-launcher"
+          # Discord SDK: q2pro loads it by @rpath; point it at the bundle's Frameworks.
+          cp "Discord/lib/${{ matrix.discord_dir }}/discord_game_sdk.dylib" "$APP/Contents/Frameworks/"
+          install_name_tool -change "@rpath/discord_game_sdk.dylib" \
+            "@executable_path/../Frameworks/discord_game_sdk.dylib" "$APP/Contents/MacOS/q2pro"
+          install_name_tool -id "@executable_path/../Frameworks/discord_game_sdk.dylib" \
+            "$APP/Contents/Frameworks/discord_game_sdk.dylib"
+
+      - name: Bundle Homebrew dylibs into the app
+        timeout-minutes: 10
+        run: |
+          APP=Q2Pro.app
+          # </dev/null: dylibbundler prompts forever on a missing library.
+          dylibbundler -od -b \
+            -x "$APP/Contents/MacOS/q2pro" \
+            -x "$APP/Contents/MacOS/q2proded" \
+            -x "$APP/Contents/MacOS/baseq2/game"*.dylib \
+            -d "$APP/Contents/Frameworks/" \
+            -s "$HOME/sdl2/lib" \
+            -p "@executable_path/../Frameworks/" </dev/null
+          # dyld refuses binaries with duplicate LC_RPATH entries.
+          RP="@executable_path/../Frameworks/"
+          for f in "$APP/Contents/MacOS/q2pro" "$APP/Contents/MacOS/q2proded" "$APP/Contents/MacOS/baseq2/"*.dylib; do
+            n=$(otool -l "$f" | grep -c "path $RP " || true)
+            while [ "$n" -gt 1 ]; do
+              install_name_tool -delete_rpath "$RP" "$f"
+              n=$((n-1))
+            done
+          done
+
+      - name: Verify the app has no external references
+        run: |
+          APP=Q2Pro.app
+          BAD=0
+          FILES=$(find "$APP/Contents/MacOS" "$APP/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm -u+x \) ! -name q2pro-launcher)
+          for f in $FILES; do
+            case "$f" in *.dylib) SKIP=3 ;; *) SKIP=2 ;; esac
+            if otool -L "$f" | tail -n +$SKIP | grep -E "/usr/local/|/opt/homebrew|/opt/local|@rpath"; then
+              echo "leak in $f"; BAD=1
+            fi
+          done
+          [ $BAD = 0 ] || { echo "ERROR: external dependency leaked into the bundle"; exit 1; }
+          echo "OK: bundle is self-contained"
+
+      - name: Stamp LSMinimumSystemVersion from bundled code
+        run: |
+          APP=Q2Pro.app
+          FILES=$(find "$APP/Contents/MacOS" "$APP/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm -u+x \) ! -name q2pro-launcher)
+          MIN=$(for f in $FILES; do otool -l "$f" | awk '/LC_BUILD_VERSION/{b=1} b&&/minos/{print $2; b=0} /LC_VERSION_MIN_MACOSX/{m=1} m&&/version/{print $2; m=0}'; done | sort -V | tail -1)
+          echo "LSMinimumSystemVersion: $MIN"
+          plutil -replace LSMinimumSystemVersion -string "$MIN" "$APP/Contents/Info.plist"
+
+      - name: Ad-hoc sign and archive
+        run: |
+          codesign --force --deep --sign - Q2Pro.app
+          codesign --verify --verbose Q2Pro.app
+          # ditto keeps symlinks, exec bits and signatures through upload/download.
+          ditto -c -k --sequesterRsrc --keepParent Q2Pro.app Q2Pro-darwin-${{ matrix.arch }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Q2Pro-darwin-${{ matrix.arch }}
+          path: Q2Pro-darwin-${{ matrix.arch }}.zip
+
+  # One universal app from the two per-architecture bundles.
   macos-universal:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos' }}
     needs: [macos]
     runs-on: macos-latest
     steps:
-      # Needed for Discord/lib/* and .github/mac/launch.sh used below
       - uses: actions/checkout@v4
-      - name: Download per-arch artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: ./artifacts
-      - name: Create universal binaries
-        run: |
-          lipo -create -output q2pro.bin ./artifacts/build-macos-x86_64/q2pro ./artifacts/build-macos-arm64/q2pro
-          lipo -create -output q2proded ./artifacts/build-macos-x86_64/q2proded ./artifacts/build-macos-arm64/q2proded
-          lipo -create -output game.dylib ./artifacts/build-macos-x86_64/gamex86_64.dylib ./artifacts/build-macos-arm64/gamearm64.dylib
-      - name: Create universal Discord SDK dylib
-        run: |
-          lipo -create -output discord_game_sdk.dylib \
-            Discord/lib/x86_64/discord_game_sdk.dylib \
-            Discord/lib/aarch64/discord_game_sdk.dylib
-      - name: Fix rpath for Discord SDK
-        run: |
-          install_name_tool -change '@rpath/discord_game_sdk.dylib' '@loader_path/discord_game_sdk.dylib' q2pro.bin
-      - name: Ad-hoc code sign
-        run: |
-          codesign --sign - --force q2pro.bin q2proded game.dylib discord_game_sdk.dylib
-      - name: Create launcher
-        run: |
-          cp .github/mac/launch.sh q2pro
-          chmod +x q2pro q2pro.bin q2proded
-      - name: Upload universal artifact
-        uses: actions/upload-artifact@v4
+          name: Q2Pro-darwin-arm64
+          path: in-arm
+      - uses: actions/download-artifact@v4
         with:
-          name: build-macos-universal
-          path: |
-            q2pro
-            q2pro.bin
-            q2proded
-            game.dylib
-            discord_game_sdk.dylib
-            
+          name: Q2Pro-darwin-x86_64
+          path: in-x86
+
+      - name: Merge into a universal app
+        run: |
+          ditto -x -k in-arm/Q2Pro-darwin-arm64.zip arm
+          ditto -x -k in-x86/Q2Pro-darwin-x86_64.zip x86
+          cp -R arm/Q2Pro.app Q2Pro.app
+          # Files only the x86_64 bundle has (for example its game library).
+          (cd x86/Q2Pro.app && find . -type f) | while read -r f; do
+            [ -e "Q2Pro.app/$f" ] || { mkdir -p "Q2Pro.app/$(dirname "$f")"; cp "x86/Q2Pro.app/$f" "Q2Pro.app/$f"; }
+          done
+          # Mach-O files in both bundles: combine them with lipo.
+          (cd arm/Q2Pro.app && find . -type f) | while read -r f; do
+            if [ -e "x86/Q2Pro.app/$f" ] && file "arm/Q2Pro.app/$f" | grep -q "Mach-O"; then
+              lipo -create "arm/Q2Pro.app/$f" "x86/Q2Pro.app/$f" -output "Q2Pro.app/$f"
+            fi
+          done
+          # The app must run wherever either slice runs: use the higher minimum.
+          MIN=$(for a in arm x86; do /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" $a/Q2Pro.app/Contents/Info.plist; done | sort -V | tail -1)
+          plutil -replace LSMinimumSystemVersion -string "$MIN" Q2Pro.app/Contents/Info.plist
+
+      - name: Verify both architectures
+        run: |
+          for f in Q2Pro.app/Contents/MacOS/q2pro Q2Pro.app/Contents/MacOS/q2proded; do
+            archs=$(lipo -archs "$f"); echo "$f: $archs"
+            case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "not universal: $f"; exit 1 ;; esac
+          done
+
+      - name: Ad-hoc sign and archive
+        run: |
+          codesign --force --deep --sign - Q2Pro.app
+          codesign --verify --verbose Q2Pro.app
+          ditto -c -k --sequesterRsrc --keepParent Q2Pro.app Q2Pro-darwin-universal.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Q2Pro-darwin-universal
+          path: Q2Pro-darwin-universal.zip
+
   # Descargar y subir los achivos al release.
   release:
     needs: [msvc, linux, macos-universal] # Espera a que todos terminen
@@ -255,11 +357,7 @@ jobs:
             ./artifacts/build-msvc-x64/*.dll
             ./artifacts/build-linux-gcc/q2pro*
             ./artifacts/build-linux-gcc/*.so
-            ./artifacts/build-macos-universal/q2pro
-            ./artifacts/build-macos-universal/q2pro.bin
-            ./artifacts/build-macos-universal/q2proded
-            ./artifacts/build-macos-universal/game.dylib
-            ./artifacts/build-macos-universal/discord_game_sdk.dylib
+            ./artifacts/Q2Pro-darwin-universal/Q2Pro-darwin-universal.zip
           draft: false
           prerelease: false
         env:

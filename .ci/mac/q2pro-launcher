@@ -1,0 +1,12 @@
+#!/bin/bash
+#
+# Q2Pro.app launcher. Sets the working directory to the folder that
+# contains Q2Pro.app so game data (baseq2/, ...) resolves next to the bundle,
+# then starts the real binary with the game library found in the bundle.
+set -e
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"        # Q2Pro.app/Contents/MacOS
+APP_PARENT="$(cd "$SELF_DIR/../../.." && pwd)"   # folder containing Q2Pro.app
+
+cd "$APP_PARENT"
+exec "$SELF_DIR/q2pro" +set libdir "$SELF_DIR" "$@"
