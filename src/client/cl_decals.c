@@ -24,6 +24,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "cl_decals.h"
 
 #define DECAL_TRACE_DIST    64.0f
+#define DECAL_TRACE_BACKOFF 4.0f
 #define DECAL_FADE_MS       1000.0f
 
 static decal_t      decal_buf[MAX_DECALS];
@@ -113,7 +114,7 @@ Traces from origin against dir (the outward normal) and stamps a decal on the su
 void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, float radius)
 {
     trace_t trace;
-    vec3_t end;
+    vec3_t start, end;
     decal_t *d;
     float life;
 
@@ -130,9 +131,13 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
         decal_image_tried = true;
     }
 
-    // dir is the outward surface normal: trace back into the surface
+    // dir is the outward surface normal: trace back into the surface.
+    // The server often reports the impact exactly on the plane, which a
+    // trace starting there treats as inside the brush (startsolid), so
+    // start slightly in front of the surface.
+    VectorMA(origin, DECAL_TRACE_BACKOFF, dir, start);
     VectorMA(origin, -DECAL_TRACE_DIST, dir, end);
-    CM_BoxTrace(&trace, origin, end, vec3_origin, vec3_origin,
+    CM_BoxTrace(&trace, start, end, vec3_origin, vec3_origin,
                 cl.bsp->nodes, MASK_SOLID, cl.csr.extended);
     if (cl_decals_debug && cl_decals_debug->integer)
         Com_Printf("[decals]   type %d trace: fraction %.3f startsolid %d allsolid %d -> %s\n",

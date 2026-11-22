@@ -228,7 +228,7 @@ static void apply_stain(const mface_t *surf, float *bl, int size)
     }
 }
 
-static void stain_face(mface_t *surf, const vec3_t org, const vec3_t color, float size)
+static bool stain_face(mface_t *surf, const vec3_t org, const vec3_t color, float size)
 {
     vec3_t  point;
     vec2_t  local;
@@ -237,18 +237,18 @@ static void stain_face(mface_t *surf, const vec3_t org, const vec3_t color, floa
     int     idx, s, t, i, smax, tmax;
 
     if (!surf->light_m || !surf->lightmap || !surf->numstyles)
-        return;
+        return false;
     if (surf->drawflags & (SURF_SKY | SURF_WARP | SURF_NODRAW | SURF_TRANS_MASK))
-        return;
+        return false;
 
     dist = PlaneDiffFast(org, surf->plane);
     rad = size - fabsf(dist);
     if (rad <= 0)
-        return;
+        return false;
 
     idx = surf - gl_static.world.cache->faces;
     if (idx < 0 || idx >= stain_numfaces)
-        return;
+        return false;
 
     smax = surf->lm_width;
     tmax = surf->lm_height;
@@ -281,13 +281,14 @@ static void stain_face(mface_t *surf, const vec3_t org, const vec3_t color, floa
 
     // force GL_PushLights to rebuild this lightmap
     surf->stylecache[0] = -1;
+    return true;
 }
 
-static void stain_node(const mnode_t *node, const vec3_t org, const vec3_t color, float size)
+static int stain_node(const mnode_t *node, const vec3_t org, const vec3_t color, float size)
 {
     mface_t *face;
     vec_t dist;
-    int i;
+    int i, count = 0;
 
     while (node->plane) {
         dist = PlaneDiffFast(org, node->plane);
@@ -301,11 +302,13 @@ static void stain_node(const mnode_t *node, const vec3_t org, const vec3_t color
         }
 
         for (i = 0, face = node->firstface; i < node->numfaces; i++, face++)
-            stain_face(face, org, color, size);
+            count += stain_face(face, org, color, size);
 
-        stain_node(node->children[0], org, color, size);
+        count += stain_node(node->children[0], org, color, size);
         node = node->children[1];
     }
+
+    return count;
 }
 
 /*
@@ -317,14 +320,14 @@ multiplier (1 = unchanged), applied at full strength in the center and
 fading out at size units.
 =================
 */
-void R_AddStain(const vec3_t org, const vec3_t color, float size)
+int R_AddStain(const vec3_t org, const vec3_t color, float size)
 {
     if (!gl_stainmaps->integer || !stain_maps || size <= 0)
-        return;
+        return 0;
     if (gl_fullbright->integer || gl_vertexlight->integer || !lm.nummaps)
-        return;
+        return 0;
 
-    stain_node(gl_static.world.cache->nodes, org, color, size);
+    return stain_node(gl_static.world.cache->nodes, org, color, size);
 }
 
 // releases all stain buffers; when keep_table is set the faces are marked

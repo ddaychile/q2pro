@@ -998,6 +998,8 @@ static void CL_AddPacketEntities(void)
             else
                 V_AddLight(ent.origin, 200, 1, 1, 0);
         } else if (effects & EF_GIB) {
+            if (cl_decals_debug && cl_decals_debug->integer > 1)
+                Com_Printf("[decals] EF_GIB trail on entity %d\n", s1->number);
             CL_DiminishingTrail(cent, ent.origin, DT_GIB);
             has_trail = true;
         } else if (effects & EF_GRENADE) {
