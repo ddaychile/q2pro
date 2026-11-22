@@ -117,8 +117,11 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     decal_t *d;
     float life;
 
-    if (!cl_decals || !cl_decals->integer || !cl.bsp)
+    if (!cl_decals || !cl_decals->integer || !cl.bsp) {
+        if (cl_decals_debug && cl_decals_debug->integer)
+            Com_Printf("[decals]   type %d skipped: disabled or no bsp\n", type);
         return;
+    }
 
     // R_RegisterPic prepends "pics/"; a missing file yields notexture, so
     // the handle is cached after the first attempt
@@ -131,6 +134,10 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     VectorMA(origin, -DECAL_TRACE_DIST, dir, end);
     CM_BoxTrace(&trace, origin, end, vec3_origin, vec3_origin,
                 cl.bsp->nodes, MASK_SOLID, cl.csr.extended);
+    if (cl_decals_debug && cl_decals_debug->integer)
+        Com_Printf("[decals]   type %d trace: fraction %.3f startsolid %d allsolid %d -> %s\n",
+                   type, trace.fraction, trace.startsolid, trace.allsolid,
+                   (trace.fraction == 1.0f || trace.startsolid) ? "REJECTED" : "spawned");
     if (trace.fraction == 1.0f || trace.startsolid)
         return;
 

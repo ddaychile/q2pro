@@ -190,6 +190,175 @@ static void add_dynamic_lights(const mface_t *surf)
     }
 }
 
+/*
+=============================================================================
+
+STAINMAPS
+
+Persistent darkening/tinting of world lightmaps (blood, bullet and explosion
+marks), ported from AprQ2's R_AddStain. Each stained face owns a multiplier
+buffer (lm_width * lm_height * 3 bytes, 255 = untouched) that is applied on
+top of the light styles whenever the face lightmap is (re)built. Buffers are
+allocated lazily and released on map change.
+
+=============================================================================
+*/
+
+#define STAIN_MIN   48      // never darken a texel below this (of 255)
+
+static byte     **stain_maps;   // per face, NULL when unstained
+static int      stain_numfaces;
+
+static void apply_stain(const mface_t *surf, float *bl, int size)
+{
+    const byte *st;
+    int idx, j;
+
+    if (!stain_maps)
+        return;
+
+    idx = surf - gl_static.world.cache->faces;
+    if (idx < 0 || idx >= stain_numfaces || !(st = stain_maps[idx]))
+        return;
+
+    for (j = 0; j < size; j++, bl += 3, st += 3) {
+        bl[0] *= st[0] * (1.0f / 255);
+        bl[1] *= st[1] * (1.0f / 255);
+        bl[2] *= st[2] * (1.0f / 255);
+    }
+}
+
+static void stain_face(mface_t *surf, const vec3_t org, const vec3_t color, float size)
+{
+    vec3_t  point;
+    vec2_t  local;
+    vec_t   dist, rad, sd, td, frac;
+    byte    *st;
+    int     idx, s, t, i, smax, tmax;
+
+    if (!surf->light_m || !surf->lightmap || !surf->numstyles)
+        return;
+    if (surf->drawflags & (SURF_SKY | SURF_WARP | SURF_NODRAW | SURF_TRANS_MASK))
+        return;
+
+    dist = PlaneDiffFast(org, surf->plane);
+    rad = size - fabsf(dist);
+    if (rad <= 0)
+        return;
+
+    idx = surf - gl_static.world.cache->faces;
+    if (idx < 0 || idx >= stain_numfaces)
+        return;
+
+    smax = surf->lm_width;
+    tmax = surf->lm_height;
+
+    if (!stain_maps[idx]) {
+        stain_maps[idx] = Z_TagMalloc(smax * tmax * 3, TAG_RENDERER);
+        memset(stain_maps[idx], 255, smax * tmax * 3);
+    }
+    st = stain_maps[idx];
+
+    VectorMA(org, -dist, surf->plane->normal, point);
+    local[0] = DotProduct(point, surf->lm_axis[0]) + surf->lm_offset[0];
+    local[1] = DotProduct(point, surf->lm_axis[1]) + surf->lm_offset[1];
+
+    for (t = 0; t < tmax; t++) {
+        td = fabsf(local[1] - t) * surf->lm_scale[1];
+        for (s = 0; s < smax; s++, st += 3) {
+            sd = fabsf(local[0] - s) * surf->lm_scale[0];
+            dist = sd > td ? sd + td * 0.5f : td + sd * 0.5f;
+            if (dist >= rad)
+                continue;
+            // soft edge: full strength at the center, none at the radius
+            frac = 1.0f - dist / rad;
+            for (i = 0; i < 3; i++) {
+                float v = st[i] * (1.0f + (color[i] - 1.0f) * frac);
+                st[i] = (byte)Q_clipf(v, STAIN_MIN, 255);
+            }
+        }
+    }
+
+    // force GL_PushLights to rebuild this lightmap
+    surf->stylecache[0] = -1;
+}
+
+static void stain_node(const mnode_t *node, const vec3_t org, const vec3_t color, float size)
+{
+    mface_t *face;
+    vec_t dist;
+    int i;
+
+    while (node->plane) {
+        dist = PlaneDiffFast(org, node->plane);
+        if (dist > size) {
+            node = node->children[0];
+            continue;
+        }
+        if (dist < -size) {
+            node = node->children[1];
+            continue;
+        }
+
+        for (i = 0, face = node->firstface; i < node->numfaces; i++, face++)
+            stain_face(face, org, color, size);
+
+        stain_node(node->children[0], org, color, size);
+        node = node->children[1];
+    }
+}
+
+/*
+=================
+R_AddStain
+
+Darkens/tints the world lightmap around org. color is a per-channel
+multiplier (1 = unchanged), applied at full strength in the center and
+fading out at size units.
+=================
+*/
+void R_AddStain(const vec3_t org, const vec3_t color, float size)
+{
+    if (!gl_stainmaps->integer || !stain_maps || size <= 0)
+        return;
+    if (gl_fullbright->integer || gl_vertexlight->integer || !lm.nummaps)
+        return;
+
+    stain_node(gl_static.world.cache->nodes, org, color, size);
+}
+
+// releases all stain buffers; when keep_table is set the faces are marked
+// for a lightmap rebuild so the stains disappear from the visible lightmaps
+static void free_stains(bool keep_table)
+{
+    mface_t *faces;
+    int i;
+
+    if (!stain_maps)
+        return;
+
+    faces = gl_static.world.cache ? gl_static.world.cache->faces : NULL;
+    for (i = 0; i < stain_numfaces; i++) {
+        if (!stain_maps[i])
+            continue;
+        Z_Free(stain_maps[i]);
+        stain_maps[i] = NULL;
+        if (keep_table && faces)
+            faces[i].stylecache[0] = -1;
+    }
+
+    if (!keep_table) {
+        Z_Free(stain_maps);
+        stain_maps = NULL;
+        stain_numfaces = 0;
+    }
+}
+
+void GL_ClearStains(void)
+{
+    free_stains(true);
+}
+
 static void add_light_styles(mface_t *surf)
 {
     const lightstyle_t *style;
@@ -228,6 +397,8 @@ static void add_light_styles(mface_t *surf)
 
         surf->stylecache[i] = style->white;
     }
+
+    apply_stain(surf, blocklights, size);
 }
 
 static void update_dynamic_lightmap(mface_t *surf)
@@ -983,6 +1154,8 @@ void GL_FreeWorld(void)
     if (!gl_static.world.cache)
         return;
 
+    free_stains(false);
+
     BSP_Free(gl_static.world.cache);
     Z_Free(gl_static.world.vertices);
     GL_DeleteBuffers(1, &gl_static.world.buffer);
@@ -1093,6 +1266,9 @@ void GL_LoadWorld(const char *name)
 
         Com_DPrintf("%s: reused old world model\n", __func__);
         bsp->refcount--;
+
+        // stains belong to a single visit of the map
+        GL_ClearStains();
         return;
     }
 
@@ -1104,6 +1280,10 @@ void GL_LoadWorld(const char *name)
     GL_InitQueries();
 
     gl_static.world.cache = bsp;
+
+    // per-face stain buffers, allocated lazily by R_AddStain
+    stain_maps = Z_TagMallocz(bsp->numfaces * sizeof(stain_maps[0]), TAG_RENDERER);
+    stain_numfaces = bsp->numfaces;
 
     // calculate world size for far clip plane and sky box
     set_world_size(bsp->nodes);

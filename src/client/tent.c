@@ -1247,6 +1247,11 @@ CL_ParseTEnt
 */
 static const byte splash_color[] = {0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8};
 
+// stain multipliers, values from AprQ2 (blood stains come from particles)
+static const vec3_t stain_shot      = { 0.89f, 0.89f, 0.89f };
+static const vec3_t stain_blaster   = { 1.1f,  1.1f,  0.0f  };
+static const vec3_t stain_explosion = { 0.8f,  0.8f,  0.8f  };
+
 static void CL_ExplosionDecals(void)
 {
     static const vec3_t dirs[] = {
@@ -1267,12 +1272,16 @@ void CL_ParseTEnt(void)
     explosion_t *ex;
     int r;
 
+    if (cl_decals_debug && cl_decals_debug->integer)
+        Com_Printf("[decals] TE %d pos (%.1f %.1f %.1f) dir (%.2f %.2f %.2f)\n",
+                   te.type, te.pos1[0], te.pos1[1], te.pos1[2],
+                   te.dir[0], te.dir[1], te.dir[2]);
+
     switch (te.type) {
     case TE_BLOOD:          // bullet hitting flesh
+        // blood stains are laid down by the 0xe8 particles (CL_AddParticles)
         if (!(cl_disable_particles->integer & NOPART_BLOOD))
             CL_ParticleEffect(te.pos1, te.dir, 0xe8, 60);
-        if (!(cl_disable_particles->integer & NOPART_BLOOD))
-            CL_SpawnDecal(te.pos1, te.dir, DECAL_BLOOD, 8 + Q_rand() % 9);
         break;
 
     case TE_GUNSHOT:            // bullet hitting wall
@@ -1296,8 +1305,11 @@ void CL_ParseTEnt(void)
                 S_StartSound(te.pos1, 0, 0, cl_sfx_ric3, 1, ATTN_NORM, 0);
         }
 
-        if (te.type == TE_GUNSHOT)
+        // AprQ2 marks both gunshots and bullet sparks
+        if (te.type != TE_SPARKS) {
             CL_SpawnDecal(te.pos1, te.dir, DECAL_BULLET, 4 + Q_rand() % 3);
+            R_AddStain(te.pos1, stain_shot, 5);
+        }
         break;
 
     case TE_SCREEN_SPARKS:
@@ -1314,6 +1326,7 @@ void CL_ParseTEnt(void)
         CL_ParticleEffect(te.pos1, te.dir, 0, 20);
         CL_SmokeAndFlash(te.pos1);
         CL_SpawnDecal(te.pos1, te.dir, DECAL_BULLET, 4 + Q_rand() % 3);
+        R_AddStain(te.pos1, stain_shot, 9);
         break;
 
     case TE_SPLASH:         // bullet hitting water
@@ -1382,8 +1395,10 @@ void CL_ParseTEnt(void)
         ex->ent.model = cl_mod_explode;
         ex->frames = 4;
         S_StartSound(te.pos1,  0, 0, cl_sfx_lashit, 1, ATTN_NORM, 0);
-        if (te.type == TE_BLASTER)
+        if (te.type == TE_BLASTER) {
             CL_SpawnDecal(te.pos1, te.dir, DECAL_BULLET, 4 + Q_rand() % 3);
+            R_AddStain(te.pos1, stain_blaster, 10);
+        }
         break;
 
     case TE_RAILTRAIL:          // railgun effect
@@ -1410,6 +1425,7 @@ void CL_ParseTEnt(void)
             S_StartSound(te.pos1, 0, 0, cl_sfx_watrexp, 1, ATTN_NORM, 0);
         else
             S_StartSound(te.pos1, 0, 0, cl_sfx_grenexp, 1, ATTN_NORM, 0);
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_EXPLOSION2:
@@ -1421,6 +1437,7 @@ void CL_ParseTEnt(void)
             ex->light = 0;
         CL_ExplosionParticles(te.pos1);
         S_StartSound(te.pos1, 0, 0, cl_sfx_grenexp, 1, ATTN_NORM, 0);
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_ROCKET_EXPLOSION:
@@ -1442,6 +1459,7 @@ void CL_ParseTEnt(void)
 
         if (te.type == TE_ROCKET_EXPLOSION)
             CL_ExplosionDecals();
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_EXPLOSION1:
@@ -1455,11 +1473,13 @@ void CL_ParseTEnt(void)
 
         if (te.type == TE_EXPLOSION1)
             CL_ExplosionDecals();
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_EXPLOSION1_NP:
         CL_PlainExplosion();
         S_StartSound(te.pos1, 0, 0, cl_sfx_rockexp, 1, ATTN_NORM, 0);
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_EXPLOSION1_BIG:
@@ -1467,6 +1487,7 @@ void CL_ParseTEnt(void)
         ex->ent.model = cl_mod_explo4;
         ex->ent.scale = 2.0f;
         S_StartSound(te.pos1, 0, 0, cl_sfx_rockexp, 1, ATTN_NORM, 0);
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_BFG_EXPLOSION:
@@ -1543,6 +1564,7 @@ void CL_ParseTEnt(void)
 
     case TE_PLAIN_EXPLOSION:
         CL_PlainExplosion();
+        R_AddStain(te.pos1, stain_explosion, 35);
         break;
 
     case TE_FLASHLIGHT:
@@ -1584,8 +1606,6 @@ void CL_ParseTEnt(void)
 
     case TE_MOREBLOOD:
         CL_ParticleEffect(te.pos1, te.dir, 0xe8, 250);
-        if (!(cl_disable_particles->integer & NOPART_BLOOD))
-            CL_SpawnDecal(te.pos1, te.dir, DECAL_BLOOD, 8 + Q_rand() % 9);
         break;
 
     case TE_CHAINFIST_SMOKE:

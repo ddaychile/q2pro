@@ -229,6 +229,9 @@ void    R_EndRegistration(void);
 #define R_RegisterSprite(name)  R_RegisterImage(name, IT_SPRITE, IF_NONE)
 
 void    R_RenderFrame(const refdef_t *fd);
+
+// world lightmap stains (blood, impacts); color is a per-channel multiplier
+void    R_AddStain(const vec3_t org, const vec3_t color, float size);
 void    R_LightPoint(const vec3_t origin, vec3_t light);
 
 void    R_ClearColor(void);

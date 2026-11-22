@@ -452,7 +452,7 @@ void GL_DrawBspModel(mmodel_t *model)
             continue;
         }
 
-        if (gl_dynamic->integer)
+        if (gl_dynamic->integer || gl_stainmaps->integer)
             GL_PushLights(face);
 
         if (face->drawflags & SURF_TRANS_MASK) {
@@ -464,7 +464,7 @@ void GL_DrawBspModel(mmodel_t *model)
         GL_AddSolidFace(face);
     }
 
-    if (gl_dynamic->integer)
+    if (gl_dynamic->integer || gl_stainmaps->integer)
         GL_UploadLightmaps();
 
     GL_DrawSolidFaces();
@@ -534,7 +534,7 @@ static inline void GL_DrawNode(const mnode_t *node)
         if (face->drawflags & SURF_NODRAW)
             continue;
 
-        if (gl_dynamic->integer)
+        if (gl_dynamic->integer || gl_stainmaps->integer)
             GL_PushLights(face);
 
         if (face->drawflags & SURF_TRANS_MASK)
@@ -595,7 +595,7 @@ void GL_DrawWorld(void)
     GL_WorldNode_r(gl_static.world.cache->nodes,
                    gl_cull_nodes->integer ? NODE_CLIPPED : NODE_UNCLIPPED);
 
-    if (gl_dynamic->integer)
+    if (gl_dynamic->integer || gl_stainmaps->integer)
         GL_UploadLightmaps();
 
     GL_DrawSolidFaces();

@@ -61,6 +61,7 @@ cvar_t  *cl_thirdperson_range;
 cvar_t  *cl_decals;
 cvar_t  *cl_decals_time;
 cvar_t  *cl_decals_max;
+cvar_t  *cl_decals_debug;
 
 cvar_t  *cl_disable_particles;
 cvar_t  *cl_disable_explosions;
@@ -2827,6 +2828,7 @@ static void CL_InitLocal(void)
 
     cl_decals       = Cvar_Get("cl_decals", "1", 0);
     cl_decals_time  = Cvar_Get("cl_decals_time", "20", 0);
+    cl_decals_debug = Cvar_Get("cl_decals_debug", "0", 0);
     cl_decals_max   = Cvar_Get("cl_decals_max", "256", 0);
 
     cl_disable_particles = Cvar_Get("cl_disable_particles", "0", 0);

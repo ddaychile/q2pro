@@ -570,6 +570,7 @@ extern cvar_t   *cl_vwep;
 extern cvar_t   *cl_decals;
 extern cvar_t   *cl_decals_time;
 extern cvar_t   *cl_decals_max;
+extern cvar_t   *cl_decals_debug;
 
 #include "cl_decals.h"
 
@@ -866,6 +867,7 @@ typedef struct cparticle_s {
     float   alpha;
     float   alphavel;
     color_t rgba;
+    bool    stained;    // blood particle already left its world stain
 } cparticle_t;
 
 typedef struct {
