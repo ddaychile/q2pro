@@ -72,6 +72,8 @@ jobs:
   msvc:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows' }}
     runs-on: windows-latest
+    env:
+      SIGNING_ENABLED: ${{ secrets.SIGNPATH_API_TOKEN != '' }}
     strategy:
       matrix:
         arch: ["x64"]
@@ -101,6 +103,32 @@ jobs:
           arch_dir=${{ matrix.arch == 'x86' && 'x86' || 'x86_64' }}
           cp Discord/lib/$arch_dir/discord_game_sdk.dll builddir/
           ls builddir/*.dll
+
+      # Code signing with SignPath. Runs only when the SIGNPATH_API_TOKEN secret exists;
+      # without it the build stays unsigned, exactly as before.
+      - name: Upload unsigned build for signing
+        if: env.SIGNING_ENABLED == 'true'
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-msvc-${{ matrix.arch }}
+          path: builddir/*.exe
+
+      - name: Sign with SignPath
+        if: env.SIGNING_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: q2dday
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          output-artifact-directory: signed
+
+      - name: Replace binaries with signed ones
+        if: env.SIGNING_ENABLED == 'true'
+        shell: bash
+        run: cp signed/*.exe builddir/
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
