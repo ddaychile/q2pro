@@ -60,7 +60,6 @@ env:
     -Dmvd-server=true
     -Dmvd-client=true
     -Dsave-games=true
-    -Dpkg_config_path=/opt/homebrew/opt/openal-soft/lib/pkgconfig
 
   MESON_ARGS_FREEBSD: >-
     -Dbuildtype=release
@@ -184,6 +183,8 @@ jobs:
           brew install meson sdl2 openal-soft libpng jpeg-turbo ffmpeg webp
       - name: Build ${{ matrix.arch }}
         run: |
+          # Homebrew prefix differs per arch (/opt/homebrew on arm64, /usr/local on x86_64)
+          export PKG_CONFIG_PATH="$(brew --prefix openal-soft)/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
           meson setup \
             --cross-file=.ci/macos-${{ matrix.arch }}.txt \
             ${{ env.MESON_ARGS }} \
