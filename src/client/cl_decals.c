@@ -27,7 +27,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define DECAL_FADE_MS       1000.0f
 
 static decal_t      decal_buf[MAX_DECALS];
-static int          decal_next;
 static qhandle_t    decal_image;
 static bool         decal_image_tried;
 
@@ -73,42 +72,42 @@ Drops all decals and the cached image handle (map change, disconnect).
 void CL_ClearDecals(void)
 {
     memset(decal_buf, 0, sizeof(decal_buf));
-    decal_next = 0;
     decal_image = 0;
     decal_image_tried = false;
 }
 
 static decal_t *alloc_decal(void)
 {
-    decal_t *d;
-    int i, oldest;
+    decal_t *free_slot = NULL, *oldest = NULL;
+    int i, live = 0, limit;
 
-    // prefer the slot at the write index when it is free, otherwise
-    // overwrite the decal that expires first
-    d = &decal_buf[decal_next];
-    if (d->die_time == 0) {
-        decal_next = (decal_next + 1) % MAX_DECALS;
-        return d;
-    }
+    limit = cl_decals_max ? Q_clip(cl_decals_max->integer, 0, MAX_DECALS) : MAX_DECALS;
+    if (!limit)
+        return NULL;
 
-    oldest = 0;
-    for (i = 1; i < MAX_DECALS; i++) {
-        if (decal_buf[i].die_time == 0) {
-            oldest = i;
-            break;
+    for (i = 0; i < MAX_DECALS; i++) {
+        decal_t *d = &decal_buf[i];
+        if (d->die_time <= cl.time) {
+            if (!free_slot)
+                free_slot = d;
+            continue;
         }
-        if (decal_buf[i].die_time < decal_buf[oldest].die_time)
-            oldest = i;
+        live++;
+        if (!oldest || d->die_time < oldest->die_time)
+            oldest = d;
     }
-    decal_next = (oldest + 1) % MAX_DECALS;
-    return &decal_buf[oldest];
+
+    // cl_decals_max caps live decals: recycle the one expiring first
+    if (live >= limit || !free_slot)
+        return oldest;
+    return free_slot;
 }
 
 /*
 =================
 CL_SpawnDecal
 
-Traces from origin along dir and stamps a decal on the surface hit.
+Traces from origin against dir (the outward normal) and stamps a decal on the surface hit.
 =================
 */
 void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, float radius)
@@ -128,7 +127,8 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
         decal_image_tried = true;
     }
 
-    VectorMA(origin, DECAL_TRACE_DIST, dir, end);
+    // dir is the outward surface normal: trace back into the surface
+    VectorMA(origin, -DECAL_TRACE_DIST, dir, end);
     CM_BoxTrace(&trace, origin, end, vec3_origin, vec3_origin,
                 cl.bsp->nodes, MASK_SOLID, cl.csr.extended);
     if (trace.fraction == 1.0f || trace.startsolid)
@@ -137,6 +137,8 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     life = cl_decals_time ? cl_decals_time->value : 30.0f;
 
     d = alloc_decal();
+    if (!d)
+        return;
     VectorCopy(trace.endpos, d->origin);
     VectorCopy(trace.plane.normal, d->normal);
     d->size = radius;

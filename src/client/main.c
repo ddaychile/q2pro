@@ -2483,6 +2483,9 @@ void CL_RestartRefresh(bool total)
         UI_Init();
     }
 
+    // cached decal image handle belongs to the old image set
+    CL_ClearDecals();
+
     if (cls_state == ca_disconnected) {
         UI_OpenMenu(UIMENU_DEFAULT);
     } else if (cls_state >= ca_loading && cls_state <= ca_active) {

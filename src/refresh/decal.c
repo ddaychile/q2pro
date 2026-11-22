@@ -64,7 +64,8 @@ void GL_DrawDecals(void)
     GL_LoadUniforms();
     GL_BindArrays(VA_EFFECT);
 
-    bits = GLS_BLEND_BLEND | GLS_DEPTHMASK_FALSE | glr.fog_bits;
+    // quads are single-sided in practice: ignore winding
+    bits = GLS_BLEND_BLEND | GLS_DEPTHMASK_FALSE | GLS_CULL_DISABLE | glr.fog_bits;
 
     qglEnable(GL_POLYGON_OFFSET_FILL);
     qglPolygonOffset(-1.0f, -2.0f);

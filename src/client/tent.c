@@ -1250,11 +1250,11 @@ static const byte splash_color[] = {0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8};
 static void CL_ExplosionDecals(void)
 {
     static const vec3_t dirs[] = {
+        { -1,  0,  0 },    // outward normals; CL_SpawnDecal traces against them
         {  1,  0,  0 },
-        { -1,  0,  0 },
-        {  0,  1,  0 },
         {  0, -1,  0 },
-        {  0,  0, -1 },
+        {  0,  1,  0 },
+        {  0,  0,  1 },
     };
     int i;
 
