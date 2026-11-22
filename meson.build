@@ -84,6 +84,7 @@ ui_src = [
 ]
 
 refresh_src = [
+  'src/refresh/decal.c',
   'src/refresh/draw.c',
   'src/refresh/hq2x.c',
   'src/refresh/images.c',

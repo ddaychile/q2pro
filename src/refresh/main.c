@@ -843,6 +843,8 @@ void R_RenderFrame(const refdef_t *fd)
 
     GL_DrawBeams();
 
+    GL_DrawDecals();
+
     GL_DrawParticles();
 
     GL_OccludeFlares();
