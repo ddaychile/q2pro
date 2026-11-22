@@ -5,6 +5,15 @@ on:
     branches: [master, ci]
   pull_request:
     branches: [master]
+  # Ejecución manual: en GitHub > Actions > build > "Run workflow"
+  # (o: gh workflow run build.yml -R ddaychile/q2pro --ref anticheat-cl -f target=windows)
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Qué plataforma compilar"
+        type: choice
+        default: all
+        options: [all, windows, linux, macos]
 
 env:
   MESON_ARGS: >-
@@ -62,6 +71,7 @@ env:
 
 jobs:
   mingw:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows' }}
     runs-on: ubuntu-24.04
     strategy:
       matrix:
@@ -93,6 +103,7 @@ jobs:
             builddir/*.dll
 
   msvc:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows' }}
     runs-on: windows-latest
     strategy:
       matrix:
@@ -126,6 +137,7 @@ jobs:
             builddir/*.dll
 
   linux:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'linux' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -159,6 +171,7 @@ jobs:
             builddir/game*.so
 
   macos:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos' }}
     runs-on: ${{ matrix.arch == 'x86_64' && 'macos-13' || 'macos-latest' }}
     strategy:
       matrix:

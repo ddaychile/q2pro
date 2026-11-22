@@ -5,6 +5,7 @@ on:
     branches: [master, anticheat-cl]
   pull_request:
     branches: [master, anticheat-cl]
+  workflow_dispatch:
 
 jobs:
   flatpak:
