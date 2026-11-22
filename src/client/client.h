@@ -778,6 +778,7 @@ void V_Shutdown(void);
 void V_RenderView(void);
 void V_AddEntity(const entity_t *ent);
 void V_AddParticle(const particle_t *p);
+void V_AddDecal(const refdecal_t *d);
 void V_AddLight(const vec3_t org, float intensity, float r, float g, float b);
 void V_AddLightStyle(int style, float value);
 void CL_UpdateBlendSetting(void);

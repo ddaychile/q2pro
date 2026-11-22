@@ -53,6 +53,9 @@ entity_t    r_entities[MAX_ENTITIES];
 int         r_numparticles;
 particle_t  r_particles[MAX_PARTICLES];
 
+int         r_numdecals;
+refdecal_t  r_decals[MAX_DECALS];
+
 lightstyle_t    r_lightstyles[MAX_LIGHTSTYLES];
 
 /*
@@ -67,6 +70,7 @@ static void V_ClearScene(void)
     r_numdlights = 0;
     r_numentities = 0;
     r_numparticles = 0;
+    r_numdecals = 0;
 }
 
 /*
@@ -93,6 +97,19 @@ void V_AddParticle(const particle_t *p)
     if (r_numparticles >= MAX_PARTICLES)
         return;
     r_particles[r_numparticles++] = *p;
+}
+
+/*
+=====================
+V_AddDecal
+
+=====================
+*/
+void V_AddDecal(const refdecal_t *d)
+{
+    if (r_numdecals >= MAX_DECALS)
+        return;
+    r_decals[r_numdecals++] = *d;
 }
 
 /*
@@ -448,6 +465,8 @@ void V_RenderView(void)
         cl.refdef.entities = r_entities;
         cl.refdef.num_particles = r_numparticles;
         cl.refdef.particles = r_particles;
+        cl.refdef.num_decals = r_numdecals;
+        cl.refdef.decals = r_decals;
         cl.refdef.num_dlights = r_numdlights;
         cl.refdef.dlights = r_dlights;
         cl.refdef.lightstyles = r_lightstyles;
