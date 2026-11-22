@@ -393,8 +393,11 @@ elif host_machine.system() == 'darwin'
   discord_link_args = ['-Wl,-rpath,@loader_path',
                        discord_sdk_dir / discord_sdk_arch / 'discord_game_sdk.dylib']
 elif host_machine.system() == 'linux'
-  discord_link_args = ['-Wl,-rpath,$ORIGIN',
-                       discord_sdk_dir / 'x86_64' / 'discord_game_sdk.so']
+  # Link by name (not by absolute path) so the binary records only
+  # "discord_game_sdk.so" and finds it next to the executable at runtime.
+  discord_link_args = ['-L' + (discord_sdk_dir / 'x86_64'),
+                       '-l:discord_game_sdk.so',
+                       '-Wl,-rpath,$ORIGIN']
 endif
 
 discord_cpp_args = []

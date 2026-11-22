@@ -90,20 +90,16 @@ jobs:
       - name: Build
         run: |
           meson setup --cross-file=.ci/${{ matrix.arch }}-w64-mingw32.txt \
-          ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
+          ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} \
+          -Dc_link_args=-static-libgcc,-static-libstdc++ \
+          -Dcpp_link_args=-static-libgcc,-static-libstdc++ builddir
           meson compile -C builddir
 
-      # Runtime DLLs the executables need but the build does not copy:
-      # the Discord SDK and the MinGW C++/GCC runtime.
-      - name: Bundle runtime DLLs
+      # The Discord SDK DLL is loaded at runtime and must sit next to the exe.
+      - name: Bundle Discord SDK DLL
         run: |
           arch_dir=${{ matrix.arch == 'i686' && 'x86' || 'x86_64' }}
           cp Discord/lib/$arch_dir/discord_game_sdk.dll builddir/
-          triple=${{ matrix.arch }}-w64-mingw32
-          for dll in libstdc++-6.dll libgcc_s_seh-1.dll libgcc_s_dw2-1.dll; do
-            p=$(${triple}-g++ -print-file-name=$dll)
-            if [ -f "$p" ]; then cp "$p" builddir/; fi
-          done
           ls builddir/*.dll
 
       - name: Upload Artifacts
@@ -137,7 +133,7 @@ jobs:
 
       - name: Build
         run: |
-          meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
+          meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} -Db_vscrt=mt builddir
           meson compile -C builddir
 
       - name: Bundle Discord SDK DLL
@@ -177,6 +173,7 @@ jobs:
         run: |
           meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_LINUX }} builddir
           meson compile -C builddir
+          cp Discord/lib/x86_64/discord_game_sdk.so builddir/
         env:
           CC: ${{ matrix.cc }}
 
@@ -188,6 +185,7 @@ jobs:
             builddir/q2pro
             builddir/q2proded
             builddir/game*.so
+            builddir/discord_game_sdk.so
 
   macos:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos' }}
