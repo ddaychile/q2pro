@@ -69,51 +69,12 @@ env:
     -Dwrap_mode=nofallback
 
 jobs:
-  mingw:
-    if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows' }}
-    runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        arch: ["i686", "x86_64"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
-        with:
-          path: subprojects/packagecache
-          key: ${{ hashFiles('subprojects/*.wrap') }}
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y g++-mingw-w64-x86-64 g++-mingw-w64-i686 mingw-w64-common mingw-w64-x86-64-dev mingw-w64-i686-dev nasm meson ninja-build
-
-      - name: Build
-        run: |
-          meson setup --cross-file=.ci/${{ matrix.arch }}-w64-mingw32.txt \
-          ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
-          meson compile -C builddir
-
-      # The Discord SDK DLL is loaded at runtime and must sit next to the exe.
-      - name: Bundle Discord SDK DLL
-        run: |
-          arch_dir=${{ matrix.arch == 'i686' && 'x86' || 'x86_64' }}
-          cp Discord/lib/$arch_dir/discord_game_sdk.dll builddir/
-          ls builddir/*.dll
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-mingw-${{ matrix.arch }}
-          path: |
-            builddir/*.exe
-            builddir/*.dll
-
   msvc:
     if: ${{ github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows' }}
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: ["x86", "x64"]
+        arch: ["x64"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -274,7 +235,7 @@ jobs:
             
   # Descargar y subir los achivos al release.
   release:
-    needs: [mingw, msvc, linux, macos-universal] # Espera a que todos terminen
+    needs: [msvc, linux, macos-universal] # Espera a que todos terminen
     if: startsWith(github.ref, 'refs/tags/') # Solo se ejecuta si es un tag (ej: v1.0)
     runs-on: ubuntu-latest
     steps:
@@ -290,12 +251,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ./artifacts/build-mingw-i686/*.exe
-            ./artifacts/build-mingw-i686/*.dll
-            ./artifacts/build-mingw-x86_64/*.exe
-            ./artifacts/build-mingw-x86_64/*.dll
-            ./artifacts/build-msvc-x86/*.exe
-            ./artifacts/build-msvc-x86/*.dll
             ./artifacts/build-msvc-x64/*.exe
             ./artifacts/build-msvc-x64/*.dll
             ./artifacts/build-linux-gcc/q2pro*
