@@ -567,6 +567,12 @@ extern cvar_t   *cl_showclamp;
 
 extern cvar_t   *cl_vwep;
 
+extern cvar_t   *cl_decals;
+extern cvar_t   *cl_decals_time;
+extern cvar_t   *cl_decals_max;
+
+#include "cl_decals.h"
+
 extern cvar_t   *cl_disable_particles;
 extern cvar_t   *cl_disable_explosions;
 extern cvar_t   *cl_dlight_hacks;
