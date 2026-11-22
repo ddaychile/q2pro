@@ -275,12 +275,12 @@ jobs:
           codesign --force --deep --sign - Q2Dday.app
           codesign --verify --verbose Q2Dday.app
           # ditto keeps symlinks, exec bits and signatures through upload/download.
-          ditto -c -k --sequesterRsrc --keepParent Q2Dday.app Q2Dday-darwin-${{ matrix.arch }}.zip
+          ditto -c -k --sequesterRsrc --keepParent Q2Dday.app Q2Dday-macOS-${{ matrix.arch }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Q2Dday-darwin-${{ matrix.arch }}
-          path: Q2Dday-darwin-${{ matrix.arch }}.zip
+          name: Q2Dday-macOS-${{ matrix.arch }}
+          path: Q2Dday-macOS-${{ matrix.arch }}.zip
 
   # One universal app from the two per-architecture bundles.
   macos-universal:
@@ -291,17 +291,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Q2Dday-darwin-arm64
+          name: Q2Dday-macOS-arm64
           path: in-arm
       - uses: actions/download-artifact@v4
         with:
-          name: Q2Dday-darwin-x86_64
+          name: Q2Dday-macOS-x86_64
           path: in-x86
 
       - name: Merge into a universal app
         run: |
-          ditto -x -k in-arm/Q2Dday-darwin-arm64.zip arm
-          ditto -x -k in-x86/Q2Dday-darwin-x86_64.zip x86
+          ditto -x -k in-arm/Q2Dday-macOS-arm64.zip arm
+          ditto -x -k in-x86/Q2Dday-macOS-x86_64.zip x86
           cp -R arm/Q2Dday.app Q2Dday.app
           # Files only the x86_64 bundle has (for example its game library).
           (cd x86/Q2Dday.app && find . -type f) | while read -r f; do
@@ -328,12 +328,12 @@ jobs:
         run: |
           codesign --force --deep --sign - Q2Dday.app
           codesign --verify --verbose Q2Dday.app
-          ditto -c -k --sequesterRsrc --keepParent Q2Dday.app Q2Dday-darwin-universal.zip
+          ditto -c -k --sequesterRsrc --keepParent Q2Dday.app Q2Dday-macOS-universal.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Q2Dday-darwin-universal
-          path: Q2Dday-darwin-universal.zip
+          name: Q2Dday-macOS-universal
+          path: Q2Dday-macOS-universal.zip
 
   # Descargar y subir los achivos al release.
   release:
@@ -357,7 +357,7 @@ jobs:
             ./artifacts/build-msvc-x64/*.dll
             ./artifacts/build-linux-gcc/q2pro*
             ./artifacts/build-linux-gcc/*.so
-            ./artifacts/Q2Dday-darwin-universal/Q2Dday-darwin-universal.zip
+            ./artifacts/Q2Dday-macOS-universal/Q2Dday-macOS-universal.zip
           draft: false
           prerelease: false
         env:
