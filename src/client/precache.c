@@ -33,7 +33,7 @@ If model or skin are found to be invalid, replaces them with sane defaults.
 void CL_ParsePlayerSkin(char *name, char *model, char *skin, const char *s)
 {
     size_t len;
-    char *t;
+    const char *t;
 
     len = strlen(s);
     Q_assert(len < MAX_QPATH);

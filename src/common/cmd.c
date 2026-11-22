@@ -1518,7 +1518,7 @@ Cmd_Exists
 */
 bool Cmd_Exists(const char *name)
 {
-    return Cmd_Find(name);
+    return Cmd_Find(name) != NULL;
 }
 
 xcommand_t Cmd_FindFunction(const char *name)
