@@ -465,6 +465,7 @@ void V_RenderView(void)
         cl.refdef.entities = r_entities;
         cl.refdef.num_particles = r_numparticles;
         cl.refdef.particles = r_particles;
+        CL_AddDecals();
         cl.refdef.num_decals = r_numdecals;
         cl.refdef.decals = r_decals;
         cl.refdef.num_dlights = r_numdlights;

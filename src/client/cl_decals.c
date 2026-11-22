@@ -26,12 +26,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define DECAL_TRACE_DIST    64.0f
 #define DECAL_FADE_MS       1000.0f
 
-// registered by the client cvar setup; NULL means decals are disabled
-cvar_t  *cl_decals;
-cvar_t  *cl_decals_time;
-cvar_t  *cl_decals_max;
-
-static decal_t      decal_buf[MAX_DECALS];
+static decal_t     decal_buf[MAX_DECALS];
 static int          decal_next;
 static qhandle_t    decal_image;
 static bool         decal_image_tried;

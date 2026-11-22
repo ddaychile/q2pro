@@ -58,6 +58,10 @@ cvar_t  *cl_thirdperson;
 cvar_t  *cl_thirdperson_angle;
 cvar_t  *cl_thirdperson_range;
 
+cvar_t  *cl_decals;
+cvar_t  *cl_decals_time;
+cvar_t  *cl_decals_max;
+
 cvar_t  *cl_disable_particles;
 cvar_t  *cl_disable_explosions;
 cvar_t  *cl_dlight_hacks;
@@ -2817,6 +2821,10 @@ static void CL_InitLocal(void)
     cl_thirdperson = Cvar_Get("cl_thirdperson", "0", CVAR_CHEAT);
     cl_thirdperson_angle = Cvar_Get("cl_thirdperson_angle", "0", 0);
     cl_thirdperson_range = Cvar_Get("cl_thirdperson_range", "60", 0);
+
+    cl_decals       = Cvar_Get("cl_decals", "1", 0);
+    cl_decals_time  = Cvar_Get("cl_decals_time", "20", 0);
+    cl_decals_max   = Cvar_Get("cl_decals_max", "256", 0);
 
     cl_disable_particles = Cvar_Get("cl_disable_particles", "0", 0);
     cl_disable_explosions = Cvar_Get("cl_disable_explosions", "0", 0);
