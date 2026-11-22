@@ -50,12 +50,15 @@ void GL_DrawDecals(void)
 {
     const refdecal_t *decal;
     int total, count, numverts;
-    GLuint texnum, cur_texnum;
+    GLuint texnum, cur_texnum = 0;
     vec_t *dst_vert;
     glStateBits_t bits;
+    glStateBits_t saved_bits;
 
     if (!glr.fd.num_decals || !glr.fd.decals)
         return;
+
+    saved_bits = gls.state_bits;
 
     GL_LoadMatrix(glr.viewmatrix);
     GL_LoadUniforms();
@@ -97,4 +100,5 @@ void GL_DrawDecals(void)
     }
 
     qglDisable(GL_POLYGON_OFFSET_FILL);
+    GL_StateBits(saved_bits);
 }
