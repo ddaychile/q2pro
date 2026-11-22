@@ -34,6 +34,7 @@ cvar_t  *cl_decals_max;
 static decal_t      decal_buf[MAX_DECALS];
 static int          decal_next;
 static qhandle_t    decal_image;
+static bool         decal_image_tried;
 
 /*
 =================
@@ -65,6 +66,21 @@ void CL_DecalVectors(const vec3_t normal, float angle, vec3_t right, vec3_t up)
     VectorMA(right, s, u, right);
     VectorScale(u, c, up);
     VectorMA(up, -s, r, up);
+}
+
+/*
+=================
+CL_ClearDecals
+
+Drops all decals and the cached image handle (map change, disconnect).
+=================
+*/
+void CL_ClearDecals(void)
+{
+    memset(decal_buf, 0, sizeof(decal_buf));
+    decal_next = 0;
+    decal_image = 0;
+    decal_image_tried = false;
 }
 
 static decal_t *alloc_decal(void)
@@ -110,8 +126,12 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     if (!cl_decals || !cl_decals->integer || !cl.bsp)
         return;
 
-    if (!decal_image)
-        decal_image = R_RegisterPic("pics/bullethole.png");
+    // R_RegisterPic prepends "pics/"; a missing file yields notexture, so
+    // the handle is cached after the first attempt
+    if (!decal_image_tried) {
+        decal_image = R_RegisterPic("bullethole.png");
+        decal_image_tried = true;
+    }
 
     VectorMA(origin, DECAL_TRACE_DIST, dir, end);
     CM_BoxTrace(&trace, origin, end, vec3_origin, vec3_origin,

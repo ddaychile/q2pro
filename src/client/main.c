@@ -673,6 +673,7 @@ void CL_ClearState(void)
     SCR_StopCinematic();
     SCR_ClearCenterPrints();
     CL_ClearEffects();
+    CL_ClearDecals();
     CL_ClearTEnts();
     LOC_FreeLocations();
     CL_FreeDemoSnapshots();
