@@ -204,6 +204,8 @@ jobs:
     needs: [macos]
     runs-on: macos-latest
     steps:
+      # Needed for Discord/lib/* and .github/mac/launch.sh used below
+      - uses: actions/checkout@v4
       - name: Download per-arch artifacts
         uses: actions/download-artifact@v4
         with:
