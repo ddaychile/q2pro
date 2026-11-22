@@ -146,7 +146,7 @@ jobs:
             builddir/game*.so
             builddir/discord_game_sdk.so
 
-  # Q2Pro.app: a self-contained bundle. Homebrew dylibs are copied into
+  # Q2Dday.app: a self-contained bundle. Homebrew dylibs are copied into
   # Contents/Frameworks by dylibbundler, the Discord SDK is copied in by hand,
   # and the build fails if any /usr/local, /opt/homebrew or @rpath reference leaks.
   macos:
@@ -210,10 +210,10 @@ jobs:
             builddir-${{ matrix.arch }}
           meson compile -C builddir-${{ matrix.arch }}
 
-      - name: Assemble Q2Pro.app
+      - name: Assemble Q2Dday.app
         run: |
           B=builddir-${{ matrix.arch }}
-          APP=Q2Pro.app
+          APP=Q2Dday.app
           mkdir -p "$APP/Contents/MacOS/baseq2" "$APP/Contents/Frameworks" "$APP/Contents/Resources"
           cp "$B/q2pro" "$B/q2proded" "$APP/Contents/MacOS/"
           cp "$B"/game*.dylib "$APP/Contents/MacOS/baseq2/"
@@ -229,7 +229,7 @@ jobs:
       - name: Bundle Homebrew dylibs into the app
         timeout-minutes: 10
         run: |
-          APP=Q2Pro.app
+          APP=Q2Dday.app
           # </dev/null: dylibbundler prompts forever on a missing library.
           dylibbundler -od -b \
             -x "$APP/Contents/MacOS/q2pro" \
@@ -250,7 +250,7 @@ jobs:
 
       - name: Verify the app has no external references
         run: |
-          APP=Q2Pro.app
+          APP=Q2Dday.app
           BAD=0
           FILES=$(find "$APP/Contents/MacOS" "$APP/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm -u+x \) ! -name q2pro-launcher)
           for f in $FILES; do
@@ -264,7 +264,7 @@ jobs:
 
       - name: Stamp LSMinimumSystemVersion from bundled code
         run: |
-          APP=Q2Pro.app
+          APP=Q2Dday.app
           FILES=$(find "$APP/Contents/MacOS" "$APP/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm -u+x \) ! -name q2pro-launcher)
           MIN=$(for f in $FILES; do otool -l "$f" | awk '/LC_BUILD_VERSION/{b=1} b&&/minos/{print $2; b=0} /LC_VERSION_MIN_MACOSX/{m=1} m&&/version/{print $2; m=0}'; done | sort -V | tail -1)
           echo "LSMinimumSystemVersion: $MIN"
@@ -272,15 +272,15 @@ jobs:
 
       - name: Ad-hoc sign and archive
         run: |
-          codesign --force --deep --sign - Q2Pro.app
-          codesign --verify --verbose Q2Pro.app
+          codesign --force --deep --sign - Q2Dday.app
+          codesign --verify --verbose Q2Dday.app
           # ditto keeps symlinks, exec bits and signatures through upload/download.
-          ditto -c -k --sequesterRsrc --keepParent Q2Pro.app Q2Pro-darwin-${{ matrix.arch }}.zip
+          ditto -c -k --sequesterRsrc --keepParent Q2Dday.app Q2Dday-darwin-${{ matrix.arch }}.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Q2Pro-darwin-${{ matrix.arch }}
-          path: Q2Pro-darwin-${{ matrix.arch }}.zip
+          name: Q2Dday-darwin-${{ matrix.arch }}
+          path: Q2Dday-darwin-${{ matrix.arch }}.zip
 
   # One universal app from the two per-architecture bundles.
   macos-universal:
@@ -291,49 +291,49 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Q2Pro-darwin-arm64
+          name: Q2Dday-darwin-arm64
           path: in-arm
       - uses: actions/download-artifact@v4
         with:
-          name: Q2Pro-darwin-x86_64
+          name: Q2Dday-darwin-x86_64
           path: in-x86
 
       - name: Merge into a universal app
         run: |
-          ditto -x -k in-arm/Q2Pro-darwin-arm64.zip arm
-          ditto -x -k in-x86/Q2Pro-darwin-x86_64.zip x86
-          cp -R arm/Q2Pro.app Q2Pro.app
+          ditto -x -k in-arm/Q2Dday-darwin-arm64.zip arm
+          ditto -x -k in-x86/Q2Dday-darwin-x86_64.zip x86
+          cp -R arm/Q2Dday.app Q2Dday.app
           # Files only the x86_64 bundle has (for example its game library).
-          (cd x86/Q2Pro.app && find . -type f) | while read -r f; do
-            [ -e "Q2Pro.app/$f" ] || { mkdir -p "Q2Pro.app/$(dirname "$f")"; cp "x86/Q2Pro.app/$f" "Q2Pro.app/$f"; }
+          (cd x86/Q2Dday.app && find . -type f) | while read -r f; do
+            [ -e "Q2Dday.app/$f" ] || { mkdir -p "Q2Dday.app/$(dirname "$f")"; cp "x86/Q2Dday.app/$f" "Q2Dday.app/$f"; }
           done
           # Mach-O files in both bundles: combine them with lipo.
-          (cd arm/Q2Pro.app && find . -type f) | while read -r f; do
-            if [ -e "x86/Q2Pro.app/$f" ] && file "arm/Q2Pro.app/$f" | grep -q "Mach-O"; then
-              lipo -create "arm/Q2Pro.app/$f" "x86/Q2Pro.app/$f" -output "Q2Pro.app/$f"
+          (cd arm/Q2Dday.app && find . -type f) | while read -r f; do
+            if [ -e "x86/Q2Dday.app/$f" ] && file "arm/Q2Dday.app/$f" | grep -q "Mach-O"; then
+              lipo -create "arm/Q2Dday.app/$f" "x86/Q2Dday.app/$f" -output "Q2Dday.app/$f"
             fi
           done
           # The app must run wherever either slice runs: use the higher minimum.
-          MIN=$(for a in arm x86; do /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" $a/Q2Pro.app/Contents/Info.plist; done | sort -V | tail -1)
-          plutil -replace LSMinimumSystemVersion -string "$MIN" Q2Pro.app/Contents/Info.plist
+          MIN=$(for a in arm x86; do /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" $a/Q2Dday.app/Contents/Info.plist; done | sort -V | tail -1)
+          plutil -replace LSMinimumSystemVersion -string "$MIN" Q2Dday.app/Contents/Info.plist
 
       - name: Verify both architectures
         run: |
-          for f in Q2Pro.app/Contents/MacOS/q2pro Q2Pro.app/Contents/MacOS/q2proded; do
+          for f in Q2Dday.app/Contents/MacOS/q2pro Q2Dday.app/Contents/MacOS/q2proded; do
             archs=$(lipo -archs "$f"); echo "$f: $archs"
             case "$archs" in *arm64*x86_64*|*x86_64*arm64*) ;; *) echo "not universal: $f"; exit 1 ;; esac
           done
 
       - name: Ad-hoc sign and archive
         run: |
-          codesign --force --deep --sign - Q2Pro.app
-          codesign --verify --verbose Q2Pro.app
-          ditto -c -k --sequesterRsrc --keepParent Q2Pro.app Q2Pro-darwin-universal.zip
+          codesign --force --deep --sign - Q2Dday.app
+          codesign --verify --verbose Q2Dday.app
+          ditto -c -k --sequesterRsrc --keepParent Q2Dday.app Q2Dday-darwin-universal.zip
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Q2Pro-darwin-universal
-          path: Q2Pro-darwin-universal.zip
+          name: Q2Dday-darwin-universal
+          path: Q2Dday-darwin-universal.zip
 
   # Descargar y subir los achivos al release.
   release:
@@ -357,7 +357,7 @@ jobs:
             ./artifacts/build-msvc-x64/*.dll
             ./artifacts/build-linux-gcc/q2pro*
             ./artifacts/build-linux-gcc/*.so
-            ./artifacts/Q2Pro-darwin-universal/Q2Pro-darwin-universal.zip
+            ./artifacts/Q2Dday-darwin-universal/Q2Dday-darwin-universal.zip
           draft: false
           prerelease: false
         env:
