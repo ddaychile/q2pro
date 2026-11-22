@@ -26,7 +26,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define DECAL_TRACE_DIST    64.0f
 #define DECAL_FADE_MS       1000.0f
 
-static decal_t     decal_buf[MAX_DECALS];
+static decal_t      decal_buf[MAX_DECALS];
 static int          decal_next;
 static qhandle_t    decal_image;
 static bool         decal_image_tried;
@@ -157,6 +157,9 @@ Submits every live decal to the refresh via V_AddDecal.
 void CL_AddDecals(void)
 {
     int i, count, limit;
+
+    if (!cl_decals || !cl_decals->integer)
+        return;
 
     limit = cl_decals_max ? cl_decals_max->integer : MAX_DECALS;
     limit = Q_clip(limit, 0, MAX_DECALS);
