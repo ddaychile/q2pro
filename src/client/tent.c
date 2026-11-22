@@ -1247,6 +1247,21 @@ CL_ParseTEnt
 */
 static const byte splash_color[] = {0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8};
 
+static void CL_ExplosionDecals(void)
+{
+    static const vec3_t dirs[] = {
+        {  1,  0,  0 },
+        { -1,  0,  0 },
+        {  0,  1,  0 },
+        {  0, -1,  0 },
+        {  0,  0, -1 },
+    };
+    int i;
+
+    for (i = 0; i < q_countof(dirs); i++)
+        CL_SpawnDecal(te.pos1, dirs[i], DECAL_BURN, 24 + Q_rand() % 25);
+}
+
 void CL_ParseTEnt(void)
 {
     explosion_t *ex;
@@ -1256,6 +1271,8 @@ void CL_ParseTEnt(void)
     case TE_BLOOD:          // bullet hitting flesh
         if (!(cl_disable_particles->integer & NOPART_BLOOD))
             CL_ParticleEffect(te.pos1, te.dir, 0xe8, 60);
+        if (!(cl_disable_particles->integer & NOPART_BLOOD))
+            CL_SpawnDecal(te.pos1, te.dir, DECAL_BLOOD, 8 + Q_rand() % 9);
         break;
 
     case TE_GUNSHOT:            // bullet hitting wall
@@ -1278,6 +1295,9 @@ void CL_ParseTEnt(void)
             else if (r == 3)
                 S_StartSound(te.pos1, 0, 0, cl_sfx_ric3, 1, ATTN_NORM, 0);
         }
+
+        if (te.type == TE_GUNSHOT)
+            CL_SpawnDecal(te.pos1, te.dir, DECAL_BULLET, 4 + Q_rand() % 3);
         break;
 
     case TE_SCREEN_SPARKS:
@@ -1293,6 +1313,7 @@ void CL_ParseTEnt(void)
     case TE_SHOTGUN:            // bullet hitting wall
         CL_ParticleEffect(te.pos1, te.dir, 0, 20);
         CL_SmokeAndFlash(te.pos1);
+        CL_SpawnDecal(te.pos1, te.dir, DECAL_BULLET, 4 + Q_rand() % 3);
         break;
 
     case TE_SPLASH:         // bullet hitting water
@@ -1361,6 +1382,8 @@ void CL_ParseTEnt(void)
         ex->ent.model = cl_mod_explode;
         ex->frames = 4;
         S_StartSound(te.pos1,  0, 0, cl_sfx_lashit, 1, ATTN_NORM, 0);
+        if (te.type == TE_BLASTER)
+            CL_SpawnDecal(te.pos1, te.dir, DECAL_BULLET, 4 + Q_rand() % 3);
         break;
 
     case TE_RAILTRAIL:          // railgun effect
@@ -1416,6 +1439,9 @@ void CL_ParseTEnt(void)
             S_StartSound(te.pos1, 0, 0, cl_sfx_watrexp, 1, ATTN_NORM, 0);
         else
             S_StartSound(te.pos1, 0, 0, cl_sfx_rockexp, 1, ATTN_NORM, 0);
+
+        if (te.type == TE_ROCKET_EXPLOSION)
+            CL_ExplosionDecals();
         break;
 
     case TE_EXPLOSION1:
@@ -1426,6 +1452,9 @@ void CL_ParseTEnt(void)
             ex->light = 0;
         CL_ExplosionParticles(te.pos1);
         S_StartSound(te.pos1, 0, 0, cl_sfx_rockexp, 1, ATTN_NORM, 0);
+
+        if (te.type == TE_EXPLOSION1)
+            CL_ExplosionDecals();
         break;
 
     case TE_EXPLOSION1_NP:
@@ -1555,6 +1584,8 @@ void CL_ParseTEnt(void)
 
     case TE_MOREBLOOD:
         CL_ParticleEffect(te.pos1, te.dir, 0xe8, 250);
+        if (!(cl_disable_particles->integer & NOPART_BLOOD))
+            CL_SpawnDecal(te.pos1, te.dir, DECAL_BLOOD, 8 + Q_rand() % 9);
         break;
 
     case TE_CHAINFIST_SMOKE:
