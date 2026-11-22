@@ -177,6 +177,18 @@ jobs:
         arch: [x86_64, arm64]
     steps:
       - uses: actions/checkout@v4
+      # Intel: Homebrew has no bottles for this runner, so ~21 formulae
+      # (incl. ffmpeg) compile from source (~1h). Cache the installed kegs.
+      - name: Restore Homebrew cache (x86_64)
+        if: matrix.arch == 'x86_64'
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/Cellar
+            /usr/local/opt
+          key: brew-x86_64-${{ github.run_id }}
+          restore-keys: |
+            brew-x86_64-
       - name: Install dependencies
         run: |
           brew update
