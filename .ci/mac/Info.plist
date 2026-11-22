@@ -10,6 +10,8 @@
     <string>org.q2dday.q2dday</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleIconFile</key>
+    <string>q2dday</string>
     <key>CFBundleName</key>
     <string>Q2Dday</string>
     <key>CFBundleDisplayName</key>

@@ -532,7 +532,16 @@ if get_option('game-abi-hack').require(x86 and cc.get_id() == 'gcc' and cc.has_a
   engine_args += '-mstackrealign'
 endif
 
-executable('q2pro', common_src, client_src, refresh_src,
+# Windows executables get the Q2Dday icon from a resource script.
+win_icon_res = []
+if host_machine.system() == 'windows'
+  windows = import('windows')
+  win_icon_res = windows.compile_resources('.ci/icons/q2dday.rc',
+    args: ['-I', meson.current_source_dir() / '.ci' / 'icons'],
+    depend_files: ['.ci/icons/q2dday.ico'])
+endif
+
+executable('q2pro', common_src, client_src, refresh_src, win_icon_res,
   dependencies:          common_deps + client_deps,
   include_directories:   'inc',
   gnu_symbol_visibility: 'hidden',
@@ -542,7 +551,7 @@ executable('q2pro', common_src, client_src, refresh_src,
   install:               system_wide,
 )
 
-executable('q2proded', common_src, server_src,
+executable('q2proded', common_src, server_src, win_icon_res,
   dependencies:          common_deps + server_deps,
   include_directories:   'inc',
   gnu_symbol_visibility: 'hidden',

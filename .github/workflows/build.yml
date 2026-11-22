@@ -133,6 +133,7 @@ jobs:
           meson setup ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_LINUX }} builddir
           meson compile -C builddir
           cp Discord/lib/x86_64/discord_game_sdk.so builddir/
+          cp .ci/icons/q2dday-512.png builddir/q2dday.png
         env:
           CC: ${{ matrix.cc }}
 
@@ -145,6 +146,7 @@ jobs:
             builddir/q2proded
             builddir/game*.so
             builddir/discord_game_sdk.so
+            builddir/q2dday.png
 
   # Q2Dday.app: a self-contained bundle. Homebrew dylibs are copied into
   # Contents/Frameworks by dylibbundler, the Discord SDK is copied in by hand,
@@ -218,6 +220,7 @@ jobs:
           cp "$B/q2pro" "$B/q2proded" "$APP/Contents/MacOS/"
           cp "$B"/game*.dylib "$APP/Contents/MacOS/baseq2/"
           cp .ci/mac/Info.plist "$APP/Contents/Info.plist"
+          cp .ci/icons/q2dday.icns "$APP/Contents/Resources/"
           install -m 0755 .ci/mac/q2pro-launcher "$APP/Contents/MacOS/q2pro-launcher"
           # Discord SDK: q2pro loads it by @rpath; point it at the bundle's Frameworks.
           cp "Discord/lib/${{ matrix.discord_dir }}/discord_game_sdk.dylib" "$APP/Contents/Frameworks/"
