@@ -90,9 +90,7 @@ jobs:
       - name: Build
         run: |
           meson setup --cross-file=.ci/${{ matrix.arch }}-w64-mingw32.txt \
-          ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} \
-          -Dc_link_args=-static-libgcc,-static-libstdc++ \
-          -Dcpp_link_args=-static-libgcc,-static-libstdc++ builddir
+          ${{ env.MESON_ARGS }} ${{ env.MESON_ARGS_WIN }} builddir
           meson compile -C builddir
 
       # The Discord SDK DLL is loaded at runtime and must sit next to the exe.
@@ -211,6 +209,9 @@ jobs:
         run: |
           brew update
           brew install meson sdl2 openal-soft libpng jpeg-turbo ffmpeg webp
+          # Restored kegs (cache) may lack their bin/lib/pkgconfig links; relink them.
+          for f in $(brew list --formula); do brew link --overwrite "$f" >/dev/null 2>&1 || true; done
+          which meson
       - name: Build ${{ matrix.arch }}
         run: |
           # Homebrew prefix differs per arch (/opt/homebrew on arm64, /usr/local on x86_64)

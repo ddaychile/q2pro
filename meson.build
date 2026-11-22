@@ -355,6 +355,12 @@ if openal.found()
   config.set10('USE_OPENAL', true)
 endif
 
+# MinGW: keep libgcc/libstdc++ out of the DLL set (statically linked).
+if host_machine.system() == 'windows' and cc.get_id() == 'gcc'
+  add_project_link_arguments(['-static-libgcc', '-static-libstdc++'],
+                             language: ['c', 'cpp'])
+endif
+
 # Discord Game SDK (C++ bindings)
 discord_opt = get_option('discord')
 discord_inc = include_directories('Discord/c', 'Discord/cpp')
