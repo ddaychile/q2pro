@@ -29,6 +29,7 @@ jobs:
         with:
           name: q2pro-flatpak
           path: q2pro.flatpak
+          retention-days: 14
 
   release:
     needs: [flatpak]

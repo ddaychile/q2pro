@@ -123,6 +123,7 @@ jobs:
         with:
           name: unsigned-msvc-${{ matrix.arch }}
           path: builddir/*.exe
+          retention-days: 1
 
       - name: Sign with SignPath
         if: env.SIGNING_ENABLED == 'true'
@@ -144,6 +145,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-msvc-${{ matrix.arch }}
+          retention-days: 14
           path: |
             builddir/*.exe
             builddir/*.dll
@@ -179,6 +181,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-linux-${{ matrix.cc }}
+          retention-days: 14
           path: |
             builddir/q2pro
             builddir/q2proded
@@ -326,6 +329,7 @@ jobs:
         with:
           name: Q2Dday-macOS-${{ matrix.arch }}
           path: Q2Dday-macOS-${{ matrix.arch }}.zip
+          retention-days: 14
 
   # One universal app from the two per-architecture bundles.
   macos-universal:
@@ -379,6 +383,7 @@ jobs:
         with:
           name: Q2Dday-macOS-universal
           path: Q2Dday-macOS-universal.zip
+          retention-days: 14
 
   # Descargar y subir los achivos al release.
   release:
