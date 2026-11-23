@@ -625,6 +625,11 @@ static void CL_AddPacketEntities(void)
             ent.oldorigin[2] += autobob;
         }
 
+        // blood sprays: invisible EF_GIB projectiles removed on contact
+        if (effects & EF_GIB && s1->modelindex &&
+            !strcmp(cl.configstrings[cl.csr.models + s1->modelindex], "sprites/null.sp2"))
+            CL_TrackBlood(s1->number, s1->origin, s1->angles);
+
         if (!cl_gibs->integer) {
             if (effects & EF_GIB && !(cl.csr.extended && effects & EF_ROCKET))
                 goto skip;
@@ -1071,6 +1076,8 @@ skip:
         if (!has_trail)
             VectorCopy(ent.origin, cent->lerp_origin);
     }
+
+    CL_SweepBlood();
 }
 
 static const centity_t *get_player_entity(void)

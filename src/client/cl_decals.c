@@ -31,6 +31,25 @@ static decal_t      decal_buf[MAX_DECALS];
 static qhandle_t    decal_image;
 static bool         decal_image_tried;
 
+// Blood sprays (D-Day, AQ2-style mods) are invisible EF_GIB projectiles that
+// the server removes on contact, usually within a frame or two, so their
+// particle trail rarely reaches a wall. Track them and stain where they hit.
+#define BLOOD_TRACK_MAX     64
+#define BLOOD_TRACE_MIN     64.0f
+#define BLOOD_TRACE_MAX     256.0f
+#define BLOOD_STAIN_SIZE    20.0f
+
+typedef struct {
+    int     number;     // entity number, 0 = unused slot
+    int     frame;      // last server frame the entity was seen in
+    vec3_t  origin;     // last server origin
+    vec3_t  dir;        // unit flight direction
+    float   step;       // distance moved per server frame, 0 if unknown
+} bloodtrack_t;
+
+static bloodtrack_t blood_tracks[BLOOD_TRACK_MAX];
+static const vec3_t blood_stain_color = { 0.9f, 0.6f, 0.6f };
+
 /*
 =================
 CL_DecalVectors
@@ -73,8 +92,87 @@ Drops all decals and the cached image handle (map change, disconnect).
 void CL_ClearDecals(void)
 {
     memset(decal_buf, 0, sizeof(decal_buf));
+    memset(blood_tracks, 0, sizeof(blood_tracks));
     decal_image = 0;
     decal_image_tried = false;
+}
+
+/*
+=================
+CL_TrackBlood
+
+Records the server position of a blood spray entity seen in the current frame.
+=================
+*/
+void CL_TrackBlood(int number, const vec3_t origin, const vec3_t angles)
+{
+    bloodtrack_t *t, *free_slot = NULL;
+    vec3_t delta;
+    int i;
+
+    for (i = 0, t = blood_tracks; i < BLOOD_TRACK_MAX; i++, t++) {
+        if (t->number == number)
+            break;
+        if (!t->number && !free_slot)
+            free_slot = t;
+    }
+
+    if (i == BLOOD_TRACK_MAX) {
+        if (!free_slot)
+            return;
+        t = free_slot;
+        t->number = number;
+        t->step = 0;
+        AngleVectors(angles, t->dir, NULL, NULL);
+    } else if (!VectorCompare(origin, t->origin)) {
+        VectorSubtract(origin, t->origin, delta);
+        t->step = VectorNormalize2(delta, t->dir);
+    }
+
+    VectorCopy(origin, t->origin);
+    t->frame = cl.frame.number;
+}
+
+/*
+=================
+CL_SweepBlood
+
+Blood sprays missing from the current frame hit something: trace their last
+flight segment and stain the world surface they reached.
+=================
+*/
+void CL_SweepBlood(void)
+{
+    bloodtrack_t *t;
+    trace_t trace;
+    vec3_t end;
+    float dist;
+    int i, n;
+
+    for (i = 0, t = blood_tracks; i < BLOOD_TRACK_MAX; i++, t++) {
+        if (!t->number || t->frame == cl.frame.number)
+            continue;
+
+        t->number = 0;
+        if (!cl.bsp)
+            continue;
+
+        dist = t->step > 0 ? t->step * 2 : BLOOD_TRACE_MAX;
+        dist = Q_clipf(dist, BLOOD_TRACE_MIN, BLOOD_TRACE_MAX);
+        VectorMA(t->origin, dist, t->dir, end);
+        CM_BoxTrace(&trace, t->origin, end, vec3_origin, vec3_origin,
+                    cl.bsp->nodes, MASK_SOLID, cl.csr.extended);
+        if (trace.fraction == 1.0f || trace.startsolid) {
+            if (cl_decals_debug && cl_decals_debug->integer)
+                Com_Printf("[blood] spray gone, no wall within %.0f\n", dist);
+            continue;
+        }
+
+        n = R_AddStain(trace.endpos, blood_stain_color, BLOOD_STAIN_SIZE);
+        if (cl_decals_debug && cl_decals_debug->integer)
+            Com_Printf("[blood] spray hit (%.1f %.1f %.1f): %d faces\n",
+                       trace.endpos[0], trace.endpos[1], trace.endpos[2], n);
+    }
 }
 
 static decal_t *alloc_decal(void)

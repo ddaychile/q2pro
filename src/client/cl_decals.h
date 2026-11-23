@@ -42,5 +42,7 @@ void CL_DecalVectors(const vec3_t normal, float angle, vec3_t right, vec3_t up);
 void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, float radius);
 void CL_AddDecals(void);
 void CL_ClearDecals(void);
+void CL_TrackBlood(int number, const vec3_t origin, const vec3_t angles);
+void CL_SweepBlood(void);
 
 #endif // CL_DECALS_H
