@@ -1,10 +1,9 @@
 name: flatpak
 
+# Solo para releases (tags) o a mano: en cada push ya compila el job Linux de build.yml.
 on:
   push:
-    branches: [master, anticheat-cl]
-  pull_request:
-    branches: [master, anticheat-cl]
+    tags: ['*']
   workflow_dispatch:
 
 jobs:
@@ -23,7 +22,8 @@ jobs:
         with:
           bundle: q2pro.flatpak
           manifest-path: flatpak/org.q2pro.q2pro.yml
-          cache-key: flatpak-builder-${{ github.sha }}
+          # Keyed on the manifest so dependency modules are reused between builds.
+          cache-key: flatpak-builder-${{ hashFiles('flatpak/**') }}
 
       - uses: actions/upload-artifact@v4
         with:
