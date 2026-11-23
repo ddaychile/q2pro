@@ -1566,6 +1566,31 @@ distance) and the load is rejected.
 Runs once at model registration time, never in the per-frame render loop.
 =================
 */
+// true for "models/weapons/<...>/v_<...>": any path component after
+// models/weapons/ (directory or file name) starting with "v_"
+static bool IsViewModel(const char *name)
+{
+    const char *p;
+
+    if (memcmp(name, "models/weapons/", sizeof("models/weapons/") - 1)) {
+        return false;
+    }
+
+    p = name + sizeof("models/weapons/") - 1;
+    while (*p) {
+        if (!Q_strncasecmp(p, "v_", 2)) {
+            return true;
+        }
+        p = strchr(p, '/');
+        if (!p) {
+            break;
+        }
+        p++;
+    }
+
+    return false;
+}
+
 static bool ValidateModelGeometry(const model_t *model)
 {
     const maliasframe_t *frame;
@@ -1581,6 +1606,14 @@ static bool ValidateModelGeometry(const model_t *model)
     // give no advantage, so they are exempt.
     if (memcmp(model->name, "players/", sizeof("players/") - 1) &&
         memcmp(model->name, "models/weapons/", sizeof("models/weapons/") - 1)) {
+        return true;
+    }
+
+    // First-person view models (models/weapons/.../v_*) are drawn attached to
+    // the local camera and are never seen at another player's position, so
+    // stretching them cannot reveal enemies. Many legitimate ones (scoped
+    // rifles, throw animations) exceed the player-sized limit; exempt them.
+    if (IsViewModel(model->name)) {
         return true;
     }
 
