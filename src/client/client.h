@@ -567,6 +567,13 @@ extern cvar_t   *cl_showclamp;
 
 extern cvar_t   *cl_vwep;
 
+extern cvar_t   *cl_decals;
+extern cvar_t   *cl_decals_time;
+extern cvar_t   *cl_decals_max;
+extern cvar_t   *cl_decals_debug;
+
+#include "cl_decals.h"
+
 extern cvar_t   *cl_disable_particles;
 extern cvar_t   *cl_disable_explosions;
 extern cvar_t   *cl_dlight_hacks;
@@ -778,6 +785,7 @@ void V_Shutdown(void);
 void V_RenderView(void);
 void V_AddEntity(const entity_t *ent);
 void V_AddParticle(const particle_t *p);
+void V_AddDecal(const refdecal_t *d);
 void V_AddLight(const vec3_t org, float intensity, float r, float g, float b);
 void V_AddLightStyle(int style, float value);
 void CL_UpdateBlendSetting(void);
@@ -859,6 +867,7 @@ typedef struct cparticle_s {
     float   alpha;
     float   alphavel;
     color_t rgba;
+    bool    stained;    // blood particle already left its world stain
 } cparticle_t;
 
 typedef struct {

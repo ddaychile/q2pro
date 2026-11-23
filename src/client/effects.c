@@ -928,6 +928,7 @@ cparticle_t *CL_AllocParticle(void)
     active_particles = p;
 
     p->scale = 1.0f;
+    p->stained = false;
     return p;
 }
 
@@ -1762,6 +1763,16 @@ void CL_AddParticles(void)
                 p->next = free_particles;
                 free_particles = p;
                 continue;
+            }
+            // AprQ2 stainmaps: blood drops stain the world where they spawned
+            if (alpha <= 0.3f && p->color == 0xe8 && !p->stained) {
+                static const vec3_t stain_blood = { 0.85f, 0.5f, 0.5f };
+                int n;
+                p->stained = true;
+                n = R_AddStain(p->org, stain_blood, 18);
+                if (cl_decals_debug && cl_decals_debug->integer)
+                    Com_Printf("[stain] blood at (%.1f %.1f %.1f): %d faces\n",
+                               p->org[0], p->org[1], p->org[2], n);
             }
         } else {
             time = 0.0f;

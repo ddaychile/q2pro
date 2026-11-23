@@ -48,6 +48,7 @@ cvar_t *gl_lightmap_bits;
 cvar_t *gl_brightness;
 cvar_t *gl_dynamic;
 cvar_t *gl_dlight_falloff;
+cvar_t *gl_stainmaps;
 cvar_t *gl_modulate_entities;
 cvar_t *gl_doublelight_entities;
 cvar_t *gl_glowmap_intensity;
@@ -843,6 +844,8 @@ void R_RenderFrame(const refdef_t *fd)
 
     GL_DrawBeams();
 
+    GL_DrawDecals();
+
     GL_DrawParticles();
 
     GL_OccludeFlares();
@@ -1021,6 +1024,12 @@ static void gl_lightmap_changed(cvar_t *self)
     lm.dirty = true; // rebuild all lightmaps next frame
 }
 
+static void gl_stainmaps_changed(cvar_t *self)
+{
+    // drop existing stains; affected lightmaps are rebuilt when drawn
+    GL_ClearStains();
+}
+
 static void gl_modulate_entities_changed(cvar_t *self)
 {
     gl_static.entity_modulate = Cvar_ClampValue(gl_modulate, 0, 1e6f);
@@ -1092,6 +1101,8 @@ static void GL_Register(void)
     gl_dynamic = Cvar_Get("gl_dynamic", "1", 0);
     gl_dynamic->changed = gl_lightmap_changed;
     gl_dlight_falloff = Cvar_Get("gl_dlight_falloff", "1", 0);
+    gl_stainmaps = Cvar_Get("gl_stainmaps", "1", CVAR_ARCHIVE);
+    gl_stainmaps->changed = gl_stainmaps_changed;
     gl_modulate_entities = Cvar_Get("gl_modulate_entities", "1", 0);
     gl_modulate_entities->changed = gl_modulate_entities_changed;
     gl_doublelight_entities = Cvar_Get("gl_doublelight_entities", "1", 0);

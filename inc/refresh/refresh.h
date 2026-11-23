@@ -24,6 +24,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #define MAX_DLIGHTS     64
 #define MAX_ENTITIES    2048
 #define MAX_PARTICLES   8192
+#define MAX_DECALS      512
 #define MAX_LIGHTSTYLES 256
 
 #define POWERSUIT_SCALE     4.0f
@@ -86,6 +87,12 @@ typedef struct {
 } particle_t;
 
 typedef struct {
+    vec3_t      origin[4];      // cuatro esquinas del quad, en orden de tira
+    qhandle_t   image;          // handle de R_RegisterPic
+    float       alpha;          // ya calculado por el cliente, en [0, 1]
+} refdecal_t;
+
+typedef struct {
     float   white;              // highest of RGB
 } lightstyle_t;
 
@@ -115,6 +122,9 @@ typedef struct {
 
     int         num_particles;
     particle_t  *particles;
+
+    int         num_decals;
+    const refdecal_t *decals;
 } refdef_t;
 
 enum {
@@ -219,6 +229,10 @@ void    R_EndRegistration(void);
 #define R_RegisterSprite(name)  R_RegisterImage(name, IT_SPRITE, IF_NONE)
 
 void    R_RenderFrame(const refdef_t *fd);
+
+// world lightmap stains (blood, impacts); color is a per-channel multiplier.
+// Returns the number of faces stained.
+int     R_AddStain(const vec3_t org, const vec3_t color, float size);
 void    R_LightPoint(const vec3_t origin, vec3_t light);
 
 void    R_ClearColor(void);

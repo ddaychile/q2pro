@@ -625,6 +625,21 @@ static void CL_AddPacketEntities(void)
             ent.oldorigin[2] += autobob;
         }
 
+        // blood sprays: invisible EF_GIB projectiles removed on contact
+        if (effects & EF_GIB) {
+            const char *model = s1->modelindex ? cl.configstrings[cl.csr.models + s1->modelindex] : "";
+
+            static int gib_seen[MAX_EDICTS];
+            int last = gib_seen[s1->number];
+
+            if (cl_decals_debug && cl_decals_debug->integer &&
+                (last < cl.frame.number - 1 || last > cl.frame.number))
+                Com_Printf("[blood] new EF_GIB ent %d model '%s'\n", s1->number, model);
+            gib_seen[s1->number] = cl.frame.number;
+            if (!strcmp(model, "sprites/null.sp2"))
+                CL_TrackBlood(s1->number, s1->old_origin, s1->origin, s1->angles);
+        }
+
         if (!cl_gibs->integer) {
             if (effects & EF_GIB && !(cl.csr.extended && effects & EF_ROCKET))
                 goto skip;
@@ -998,6 +1013,8 @@ static void CL_AddPacketEntities(void)
             else
                 V_AddLight(ent.origin, 200, 1, 1, 0);
         } else if (effects & EF_GIB) {
+            if (cl_decals_debug && cl_decals_debug->integer > 1)
+                Com_Printf("[decals] EF_GIB trail on entity %d\n", s1->number);
             CL_DiminishingTrail(cent, ent.origin, DT_GIB);
             has_trail = true;
         } else if (effects & EF_GRENADE) {
@@ -1069,6 +1086,8 @@ skip:
         if (!has_trail)
             VectorCopy(ent.origin, cent->lerp_origin);
     }
+
+    CL_SweepBlood();
 }
 
 static const centity_t *get_player_entity(void)

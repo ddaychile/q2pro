@@ -246,6 +246,7 @@ extern cvar_t *gl_lightmap_bits;
 extern cvar_t *gl_brightness;
 extern cvar_t *gl_dynamic;
 extern cvar_t *gl_dlight_falloff;
+extern cvar_t *gl_stainmaps;
 extern cvar_t *gl_modulate_entities;
 extern cvar_t *gl_doublelight_entities;
 extern cvar_t *gl_glowmap_intensity;
@@ -509,6 +510,7 @@ void GL_UploadLightmaps(void);
 
 void GL_RebuildLighting(void);
 void GL_FreeWorld(void);
+void GL_ClearStains(void);
 void GL_LoadWorld(const char *name);
 
 /*
@@ -916,6 +918,7 @@ typedef struct {
 extern tesselator_t tess;
 
 void GL_Flush2D(void);
+void GL_DrawDecals(void);
 void GL_DrawParticles(void);
 void GL_DrawBeams(void);
 void GL_DrawFlares(void);

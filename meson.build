@@ -38,6 +38,7 @@ common_src = [
 
 client_src = [
   'src/client/ascii.c',
+  'src/client/cl_decals.c',
   'src/client/console.c',
   'src/client/demo.c',
   'src/client/download.c',
@@ -84,6 +85,7 @@ ui_src = [
 ]
 
 refresh_src = [
+  'src/refresh/decal.c',
   'src/refresh/draw.c',
   'src/refresh/hq2x.c',
   'src/refresh/images.c',
