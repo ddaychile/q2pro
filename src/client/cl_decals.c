@@ -242,6 +242,47 @@ static decal_t *alloc_decal(void)
     return free_slot;
 }
 
+#define DECAL_SURF_REJECT   (SURF_SKY | SURF_WARP | SURF_NODRAW)
+
+/*
+=================
+decal_fits
+
+Checks that every corner of the decal quad lies on the same flat, solid
+surface, so the quad never hangs over an edge or wraps around a corner.
+=================
+*/
+static bool decal_fits(const vec3_t center, const vec3_t normal, float rotation, float radius)
+{
+    static const float signs[4][2] = { {-1, -1}, {1, -1}, {-1, 1}, {1, 1} };
+    vec3_t right, up, corner, start, end;
+    trace_t trace;
+    float plane_dist;
+    int i;
+
+    CL_DecalVectors(normal, rotation, right, up);
+    plane_dist = DotProduct(center, normal);
+
+    for (i = 0; i < 4; i++) {
+        VectorMA(center, signs[i][0] * radius, right, corner);
+        VectorMA(corner, signs[i][1] * radius, up, corner);
+        VectorMA(corner, DECAL_TRACE_BACKOFF, normal, start);
+        VectorMA(corner, -2 * DECAL_TRACE_BACKOFF, normal, end);
+        CM_BoxTrace(&trace, start, end, vec3_origin, vec3_origin,
+                    cl.bsp->nodes, MASK_SOLID, cl.csr.extended);
+        if (trace.fraction == 1.0f || trace.startsolid)
+            return false;
+        if (fabsf(DotProduct(trace.endpos, normal) - plane_dist) > 1.0f)
+            return false;
+        if (DotProduct(trace.plane.normal, normal) < 0.99f)
+            return false;
+        if (trace.surface && (trace.surface->flags & DECAL_SURF_REJECT))
+            return false;
+    }
+
+    return true;
+}
+
 /*
 =================
 CL_SpawnDecal
@@ -254,7 +295,7 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     trace_t trace;
     vec3_t start, end;
     decal_t *d;
-    float life;
+    float life, rotation;
 
     if (!cl_decals || !cl_decals->integer || !cl.bsp) {
         if (cl_decals_debug && cl_decals_debug->integer)
@@ -284,6 +325,21 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     if (trace.fraction == 1.0f || trace.startsolid)
         return;
 
+    // never on sky, water or invisible brushes
+    if (trace.surface && (trace.surface->flags & DECAL_SURF_REJECT))
+        return;
+
+    // the quad must not overhang an edge: shrink it once, then give up
+    rotation = Q_rand() % 360;
+    if (!decal_fits(trace.endpos, trace.plane.normal, rotation, radius)) {
+        radius *= 0.6f;
+        if (!decal_fits(trace.endpos, trace.plane.normal, rotation, radius)) {
+            if (cl_decals_debug && cl_decals_debug->integer)
+                Com_Printf("[decals]   type %d dropped: does not fit the surface\n", type);
+            return;
+        }
+    }
+
     life = cl_decals_time ? cl_decals_time->value : 30.0f;
 
     d = alloc_decal();
@@ -294,7 +350,7 @@ void CL_SpawnDecal(const vec3_t origin, const vec3_t dir, decaltype_t type, floa
     d->size = radius;
     d->die_time = cl.time + life * 1000.0f;
     d->fade_duration = DECAL_FADE_MS;
-    d->rotation = Q_rand() % 360;
+    d->rotation = rotation;
     d->type = type;
     d->image = decal_image;
 }
