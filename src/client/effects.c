@@ -1766,7 +1766,7 @@ void CL_AddParticles(void)
             }
             // AprQ2 stainmaps: blood drops stain the world where they spawned
             if (alpha <= 0.3f && p->color == 0xe8 && !p->stained) {
-                static const vec3_t stain_blood = { 0.75f, 0.3f, 0.3f };
+                static const vec3_t stain_blood = { 0.85f, 0.5f, 0.5f };
                 int n;
                 p->stained = true;
                 n = R_AddStain(p->org, stain_blood, 18);

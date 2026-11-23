@@ -37,7 +37,10 @@ static bool         decal_image_tried;
 #define BLOOD_TRACK_MAX     64
 #define BLOOD_TRACE_MIN     64.0f
 #define BLOOD_TRACE_MAX     256.0f
-#define BLOOD_STAIN_SIZE    32.0f
+#define BLOOD_SPLATS        5       // stains per blood hit
+#define BLOOD_SPREAD        28.0f   // max offset of a splat from the hit point
+#define BLOOD_SPLAT_MIN     10.0f   // splat radius range
+#define BLOOD_SPLAT_MAX     22.0f
 
 typedef struct {
     int     number;     // entity number, 0 = unused slot
@@ -48,7 +51,37 @@ typedef struct {
 } bloodtrack_t;
 
 static bloodtrack_t blood_tracks[BLOOD_TRACK_MAX];
-static const vec3_t blood_stain_color = { 0.5f, 0.1f, 0.1f };
+static const vec3_t blood_stain_color = { 0.8f, 0.45f, 0.45f };
+
+/*
+=================
+CL_BloodSplat
+
+Scatters a few small, light blood stains around a hit point on a surface
+with the given normal. Overlapping splats darken the middle on their own.
+Returns the number of faces stained.
+=================
+*/
+int CL_BloodSplat(const vec3_t org, const vec3_t normal)
+{
+    vec3_t right, up, pos;
+    float r, a, size;
+    int i, n = 0;
+
+    for (i = 0; i < BLOOD_SPLATS; i++) {
+        CL_DecalVectors(normal, Q_rand() % 360, right, up);
+        // first splat at the hit point, the rest spread out around it
+        r = i ? frand() * BLOOD_SPREAD : 0;
+        a = frand() * 2.0f * M_PI;
+        VectorMA(org, r * cosf(a), right, pos);
+        VectorMA(pos, r * sinf(a), up, pos);
+        size = BLOOD_SPLAT_MIN + frand() * (BLOOD_SPLAT_MAX - BLOOD_SPLAT_MIN);
+        if (!i)
+            size = BLOOD_SPLAT_MAX;
+        n += R_AddStain(pos, blood_stain_color, size);
+    }
+    return n;
+}
 
 /*
 =================
@@ -175,7 +208,7 @@ void CL_SweepBlood(void)
             continue;
         }
 
-        n = R_AddStain(trace.endpos, blood_stain_color, BLOOD_STAIN_SIZE);
+        n = CL_BloodSplat(trace.endpos, trace.plane.normal);
         if (cl_decals_debug && cl_decals_debug->integer)
             Com_Printf("[blood] spray hit (%.1f %.1f %.1f): %d faces\n",
                        trace.endpos[0], trace.endpos[1], trace.endpos[2], n);

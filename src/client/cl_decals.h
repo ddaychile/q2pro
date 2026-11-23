@@ -44,5 +44,6 @@ void CL_AddDecals(void);
 void CL_ClearDecals(void);
 void CL_TrackBlood(int number, const vec3_t old_origin, const vec3_t origin, const vec3_t angles);
 void CL_SweepBlood(void);
+int CL_BloodSplat(const vec3_t org, const vec3_t normal);
 
 #endif // CL_DECALS_H
