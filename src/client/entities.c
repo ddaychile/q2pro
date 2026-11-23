@@ -626,9 +626,19 @@ static void CL_AddPacketEntities(void)
         }
 
         // blood sprays: invisible EF_GIB projectiles removed on contact
-        if (effects & EF_GIB && s1->modelindex &&
-            !strcmp(cl.configstrings[cl.csr.models + s1->modelindex], "sprites/null.sp2"))
-            CL_TrackBlood(s1->number, s1->origin, s1->angles);
+        if (effects & EF_GIB) {
+            const char *model = s1->modelindex ? cl.configstrings[cl.csr.models + s1->modelindex] : "";
+
+            static int gib_seen[MAX_EDICTS];
+            int last = gib_seen[s1->number];
+
+            if (cl_decals_debug && cl_decals_debug->integer &&
+                (last < cl.frame.number - 1 || last > cl.frame.number))
+                Com_Printf("[blood] new EF_GIB ent %d model '%s'\n", s1->number, model);
+            gib_seen[s1->number] = cl.frame.number;
+            if (!strcmp(model, "sprites/null.sp2"))
+                CL_TrackBlood(s1->number, s1->old_origin, s1->origin, s1->angles);
+        }
 
         if (!cl_gibs->integer) {
             if (effects & EF_GIB && !(cl.csr.extended && effects & EF_ROCKET))

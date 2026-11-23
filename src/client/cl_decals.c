@@ -48,7 +48,7 @@ typedef struct {
 } bloodtrack_t;
 
 static bloodtrack_t blood_tracks[BLOOD_TRACK_MAX];
-static const vec3_t blood_stain_color = { 0.9f, 0.6f, 0.6f };
+static const vec3_t blood_stain_color = { 0.7f, 0.25f, 0.25f };
 
 /*
 =================
@@ -104,7 +104,7 @@ CL_TrackBlood
 Records the server position of a blood spray entity seen in the current frame.
 =================
 */
-void CL_TrackBlood(int number, const vec3_t origin, const vec3_t angles)
+void CL_TrackBlood(int number, const vec3_t old_origin, const vec3_t origin, const vec3_t angles)
 {
     bloodtrack_t *t, *free_slot = NULL;
     vec3_t delta;
@@ -122,8 +122,15 @@ void CL_TrackBlood(int number, const vec3_t origin, const vec3_t angles)
             return;
         t = free_slot;
         t->number = number;
-        t->step = 0;
-        AngleVectors(angles, t->dir, NULL, NULL);
+        // a new entity carries its spawn point in old_origin
+        VectorSubtract(origin, old_origin, delta);
+        t->step = VectorNormalize2(delta, t->dir);
+        if (t->step < 1.0f) {
+            t->step = 0;
+            AngleVectors(angles, t->dir, NULL, NULL);
+        }
+        if (cl_decals_debug && cl_decals_debug->integer)
+            Com_Printf("[blood] tracking spray %d, step %.0f\n", number, t->step);
     } else if (!VectorCompare(origin, t->origin)) {
         VectorSubtract(origin, t->origin, delta);
         t->step = VectorNormalize2(delta, t->dir);
