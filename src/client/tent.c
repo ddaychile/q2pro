@@ -1251,7 +1251,7 @@ static const byte splash_color[] = {0x00, 0xe0, 0xb0, 0x50, 0xd0, 0xe0, 0xe8};
 static const vec3_t stain_shot      = { 0.89f, 0.89f, 0.89f };
 static const vec3_t stain_blaster   = { 1.1f,  1.1f,  0.0f  };
 static const vec3_t stain_explosion = { 0.8f,  0.8f,  0.8f  };
-static const vec3_t stain_blood     = { 0.7f,  0.25f, 0.25f };
+static const vec3_t stain_blood     = { 0.5f,  0.1f,  0.1f  };
 
 static void CL_Stain(const vec3_t org, const vec3_t color, float size)
 {
@@ -1290,7 +1290,7 @@ void CL_ParseTEnt(void)
     case TE_BLOOD:          // bullet hitting flesh
         // stain the surface directly (D-Day sends this where a blood spray
         // hits the world); the 0xe8 particles add more as they fade
-        CL_Stain(te.pos1, stain_blood, 20);
+        CL_Stain(te.pos1, stain_blood, 32);
         if (!(cl_disable_particles->integer & NOPART_BLOOD))
             CL_ParticleEffect(te.pos1, te.dir, 0xe8, 60);
         break;

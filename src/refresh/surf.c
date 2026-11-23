@@ -270,8 +270,10 @@ static bool stain_face(mface_t *surf, const vec3_t org, const vec3_t color, floa
             dist = sd > td ? sd + td * 0.5f : td + sd * 0.5f;
             if (dist >= rad)
                 continue;
-            // soft edge: full strength at the center, none at the radius
-            frac = 1.0f - dist / rad;
+            // full strength over the inner half, soft edge out to the radius
+            // (lightmap texels are 16 units, so a pure linear falloff
+            // leaves small stains barely visible)
+            frac = Q_clipf(2.0f * (1.0f - dist / rad), 0, 1);
             for (i = 0; i < 3; i++) {
                 float v = st[i] * (1.0f + (color[i] - 1.0f) * frac);
                 st[i] = (byte)Q_clipf(v, STAIN_MIN, 255);

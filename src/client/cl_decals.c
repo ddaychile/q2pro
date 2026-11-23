@@ -37,7 +37,7 @@ static bool         decal_image_tried;
 #define BLOOD_TRACK_MAX     64
 #define BLOOD_TRACE_MIN     64.0f
 #define BLOOD_TRACE_MAX     256.0f
-#define BLOOD_STAIN_SIZE    20.0f
+#define BLOOD_STAIN_SIZE    32.0f
 
 typedef struct {
     int     number;     // entity number, 0 = unused slot
@@ -48,7 +48,7 @@ typedef struct {
 } bloodtrack_t;
 
 static bloodtrack_t blood_tracks[BLOOD_TRACK_MAX];
-static const vec3_t blood_stain_color = { 0.7f, 0.25f, 0.25f };
+static const vec3_t blood_stain_color = { 0.5f, 0.1f, 0.1f };
 
 /*
 =================
